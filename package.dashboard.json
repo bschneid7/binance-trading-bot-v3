@@ -1,0 +1,16 @@
+{
+  "name": "grid-trading-bot-dashboard",
+  "version": "1.0.0",
+  "description": "Grid Trading Bot Dashboard - Simplified",
+  "type": "module",
+  "main": "dashboard-server.mjs",
+  "scripts": {
+    "start": "node dashboard-server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
