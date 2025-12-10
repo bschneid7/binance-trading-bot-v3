@@ -1,11 +1,11 @@
-# Grid Trading Bot Dashboard - Dockerfile
+# Grid Trading Bot Dashboard - Dockerfile with Binance.US Integration
 FROM node:22-alpine
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl python3 make g++
 
 # Copy minimal package.json
 COPY package.dashboard.json ./package.json
@@ -14,7 +14,7 @@ COPY package.dashboard.json ./package.json
 RUN npm install --production
 
 # Copy application files
-COPY dashboard-server-simple.mjs ./dashboard-server.mjs
+COPY dashboard-server-integrated.mjs ./dashboard-server.mjs
 COPY dashboard-public ./dashboard-public
 
 # Create data directory
