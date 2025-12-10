@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grid Trading Bot Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🤖 Grid Trading Bot</h1>
+                <div class="header-status">
+                    <span id="mode-badge" class="badge">Loading...</span>
+                    <span id="connection-badge" class="badge">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Cards -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">💰</div>
+                <div class="stat-content">
+                    <div class="stat-label">USD Balance</div>
+                    <div class="stat-value" id="usd-balance">$0.00</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">₿</div>
+                <div class="stat-content">
+                    <div class="stat-label">BTC Balance</div>
+                    <div class="stat-value" id="btc-balance">0.00000000</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🤖</div>
+                <div class="stat-content">
+                    <div class="stat-label">Active Bots</div>
+                    <div class="stat-value" id="active-bots">0</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-content">
+                    <div class="stat-label">Total Profit</div>
+                    <div class="stat-value" id="total-profit">$0.00</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Create Bot Section -->
+        <section class="section">
+            <div class="section-header">
+                <h2>Create New Bot</h2>
+                <button class="btn btn-secondary" onclick="toggleCreateForm()">
+                    <span id="create-toggle-text">Show Form</span>
+                </button>
+            </div>
+            <div id="create-bot-form" class="create-form" style="display: none;">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Bot Name *</label>
+                        <input type="text" id="bot-name" placeholder="e.g., btc-bot-1">
+                    </div>
+                    <div class="form-group">
+                        <label>Trading Pair *</label>
+                        <select id="bot-symbol">
+                            <option value="BTC/USD">BTC/USD</option>
+                            <option value="ETH/USD">ETH/USD</option>
+                            <option value="SOL/USD">SOL/USD</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Lower Price ($) *</label>
+                        <input type="number" id="bot-lower" placeholder="90000" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Upper Price ($) *</label>
+                        <input type="number" id="bot-upper" placeholder="100000" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Grid Levels *</label>
+                        <input type="number" id="bot-grids" placeholder="10" min="2" max="50">
+                    </div>
+                    <div class="form-group">
+                        <label>Order Size ($) *</label>
+                        <input type="number" id="bot-size" placeholder="100" step="0.01">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" onclick="createBot()">Create Bot</button>
+                    <button class="btn btn-secondary" onclick="toggleCreateForm()">Cancel</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Bots List -->
+        <section class="section">
+            <div class="section-header">
+                <h2>Your Bots</h2>
+                <button class="btn btn-secondary" onclick="loadBots()">🔄 Refresh</button>
+            </div>
+            <div id="bots-container" class="bots-grid">
+                <div class="loading">Loading bots...</div>
+            </div>
+        </section>
+
+        <!-- Bot Details Modal -->
+        <div id="bot-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modal-bot-name">Bot Details</h2>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
+                <div class="modal-body" id="modal-body">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

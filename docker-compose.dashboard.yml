@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  grid-bot-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: grid-bot-dashboard
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
+      - PAPER_TRADING=${PAPER_TRADING:-true}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - grid-bot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  grid-bot-network:
+    driver: bridge
