@@ -1,0 +1,13 @@
+{
+  "botName": "test-v2-btc",
+  "mode": "polling",
+  "started_at": "2025-12-14T12:24:42.912Z",
+  "total_updates": 3,
+  "total_fills": 0,
+  "total_replacements": 0,
+  "total_rebalances": 0,
+  "last_price": 89492.28,
+  "ws_connected": false,
+  "ws_reconnects": 0,
+  "last_rebalance_check": 1765715265689
+}

@@ -4,11 +4,11 @@
  * Grid Trading Bot CLI - Version 2.1.2
  * 
  * ═══════════════════════════════════════════════════════════════════
-  * 🔴 LIVE TRADING MODE ACTIVE 🔴
-  * - Connects to Binance.US API with FULL TRADING PERMISSIONS
-  * - Places REAL ORDERS on the exchange
-  * - Real money at risk - Use with caution
-  * - Recommended: Start with small capital for validation
+ * PAPER TRADING MODE ACTIVE
+ * - Connects to Binance.US API (READ-ONLY for real prices)
+ * - Simulates order placement locally (NO real orders sent)
+ * - Orders stored in local files only
+ * - Safe for testing - Zero risk to your Binance account
  * ═══════════════════════════════════════════════════════════════════
  * Safe for testing with production API (no geo-restrictions).
  * Enhancements in v2.1:
@@ -41,7 +41,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Version
-const VERSION = '4.2.2-MONITOR-FIX';
+const VERSION = '4.1.1-FIXED';
 
 // Database files
 const DB_DIR = join(__dirname, 'data');
@@ -84,54 +84,11 @@ const VOLATILITY_THRESHOLDS = {
   HIGH: 0.030,   // > 1.5% ATR
 };
 
-
-// Auto-sync database with Binance.US
-async function syncDatabase(exchange, botName, symbol) {
-  try {
-    console.log('🔄 Auto-syncing database with Binance.US...');
-    
-    // Fetch all open orders from exchange
-    const openOrders = await exchange.fetchOpenOrders(symbol);
-    console.log(`   Found ${openOrders.length} open orders on exchange`);
-    
-    // Format orders for database
-    const syncedOrders = openOrders.map(order => ({
-      id: order.id,
-      bot_name: botName,
-      symbol: order.symbol,
-      side: order.side,
-      price: order.price,
-      amount: order.amount,
-      status: 'open',
-      timestamp: order.timestamp || Date.now()
-    }));
-    
-    // Read current database
-    let allOrders = readJSON(ORDERS_FILE);
-    
-    // Remove old orders for this bot
-    allOrders = allOrders.filter(o => o.bot_name !== botName);
-    
-    // Add synced orders
-    allOrders = allOrders.concat(syncedOrders);
-    
-    // Save updated database
-    writeJSON(ORDERS_FILE, allOrders);
-    
-    console.log(`✅ Database synced: ${syncedOrders.length} orders for ${botName}`);
-    return syncedOrders.length;
-    
-  } catch (error) {
-    console.error('❌ Auto-sync failed:', error.message);
-    return -1;
-  }
-}
-
 // Initialize exchange
 function initExchange() {
   const apiKey = process.env.BINANCE_API_KEY;
   const secret = process.env.BINANCE_API_SECRET;
-  const testMode = process.env.PAPER_TRADING_MODE === 'true';  // false = LIVE trading
+  const testMode = false;  // Always use production API (not testnet)
 
   if (!apiKey || !secret) {
     console.error('❌ Error: BINANCE_API_KEY and BINANCE_API_SECRET must be set in .env.production');
@@ -424,10 +381,10 @@ class PaperTradingSimulator {
 
 // Place grid orders
 async function placeGridOrders(bot, gridLevels, exchange, testMode) {
-  const simulator = testMode ? new PaperTradingSimulator() : null;  // Only paper mode
+  const simulator = new PaperTradingSimulator();  // FORCED: Always use paper trading
   
   // Cancel existing orders first
-  if (simulator) {
+  if (testMode) {
     simulator.cancelAllOrders(bot.name);
   }
   
@@ -638,7 +595,7 @@ async function createBot(args) {
 
   // Initialize exchange and get current price
   const { exchange, testMode } = initExchange();
-  const symbol = args.symbol || 'BTC/USD';
+  const symbol = 'BTC/USD';
 
   try {
     console.log('📊 Fetching current market data for BTC/USD...\n');
@@ -751,13 +708,6 @@ async function startBot(args) {
     console.log(`✅ Placed ${sellOrders} SELL orders`);
     console.log(`✅ Total: ${orders.length} orders active\n`);
     
-    
-    // Clean up database entries for this bot
-    const allOrders = readJSON(ORDERS_FILE);
-    const cleanedOrders = allOrders.filter(o => o.bot_name !== name);
-    writeJSON(ORDERS_FILE, cleanedOrders);
-    console.log(`✅ Cleaned up ${allOrders.length - cleanedOrders.length} database entries`);
-    
     // Update bot status
     bot.status = 'running';
     bot.updated_at = new Date().toISOString();
@@ -766,7 +716,7 @@ async function startBot(args) {
     if (testMode) {
       console.log('📝 Mode: PAPER TRADING (simulated orders)');
     } else {
-      console.log('🔴 Mode: LIVE TRADING - Real orders on Binance.US');
+      console.log('📝 Mode: PAPER TRADING - Real Binance prices, simulated orders (NO real orders placed)');
     }
     
     console.log(`\n✅ Bot "${name}" started successfully!`);
@@ -818,13 +768,6 @@ async function stopBot(args) {
       writeJSON(ORDERS_FILE, readJSON(ORDERS_FILE));
       console.log(`✅ Cancelled ${orders.length} orders`);
     }
-    
-    
-    // Clean up database entries for this bot
-    const allOrders = readJSON(ORDERS_FILE);
-    const cleanedOrders = allOrders.filter(o => o.bot_name !== name);
-    writeJSON(ORDERS_FILE, cleanedOrders);
-    console.log(`✅ Cleaned up ${allOrders.length - cleanedOrders.length} database entries`);
     
     // Update bot status
     bot.status = 'stopped';
@@ -1116,16 +1059,6 @@ async function monitorBot(args) {
     process.exit(1);
   }
 
-
-  // Auto-sync database on monitor startup
-  const { exchange: syncExchange } = initExchange();
-  const syncedCount = await syncDatabase(syncExchange, botName, bot.symbol);
-  if (syncedCount >= 0) {
-    console.log(`✅ Startup sync complete: ${syncedCount} orders tracked\n`);
-  } else {
-    console.log(`⚠️  Startup sync failed, continuing with existing database\n`);
-  }
-
   console.log(`\n🔍 Starting monitoring for bot "${botName}"...`);
   console.log(`📊 Symbol: ${bot.symbol}`);
   console.log(`📈 Grid: ${bot.gridLevels?.length || bot.numLevels} orders`);
@@ -1150,15 +1083,15 @@ async function monitorBot(args) {
   if (simulateVolatility) {
     // Generate volatile price pattern that crosses grid levels
     const gridLevels = bot.gridLevels || [];
-    const centerPrice = ((bot.upper_price || bot.upperBound) + (bot.lower_price || bot.lowerBound)) / 2;
-    const volatilityRange = ((bot.upper_price || bot.upperBound) - (bot.lower_price || bot.lowerBound)) * 0.3; // 30% of range
+    const centerPrice = (bot.upperBound + bot.lowerBound) / 2;
+    const volatilityRange = (bot.upperBound - bot.lowerBound) * 0.3; // 30% of range
     
     // Create oscillating pattern that crosses multiple grid levels
     for (let i = 0; i < 20; i++) {
       const phase = i * Math.PI / 3; // Oscillate every 3 cycles
       const randomWalk = (Math.random() - 0.5) * volatilityRange * 0.2;
       const price = centerPrice + Math.sin(phase) * volatilityRange + randomWalk;
-      simulationPrices.push(Math.max((bot.lower_price || bot.lowerBound), Math.min((bot.upper_price || bot.upperBound), price)));
+      simulationPrices.push(Math.max(bot.lowerBound, Math.min(bot.upperBound, price)));
     }
     
     console.log(`🎯 Generated ${simulationPrices.length} simulated price points`);
@@ -1205,12 +1138,11 @@ async function monitorBot(args) {
         checkFills: async function(exchange, symbol) {
           const orders = readJSON(ORDERS_FILE);
           const activeOrders = orders.filter(o => 
-            o.bot_name === botName && 
-            o.status === 'open'
+            o.botName === botName && 
+            o.status === 'active'
           );
 
           const filled = [];
-          const newTrades = [];
 
           for (const order of activeOrders) {
             let isFilled = false;
@@ -1226,35 +1158,13 @@ async function monitorBot(args) {
               order.status = 'filled';
               order.filled_at = new Date().toISOString();
               order.filled_price = currentPrice;
-
-              // ✅ FIXED: Record trade to grid-trades.json
-              const trade = {
-                orderId: order.id,
-                bot_name: order.bot_name,
-                symbol: order.symbol,
-                side: order.side.toUpperCase(),
-                price: currentPrice,
-                amount: order.amount,
-                value: currentPrice * order.amount,
-                fee: 0,
-                timestamp: new Date().toISOString(),
-                type: "fill"
-              };
-              newTrades.push(trade);
             }
           }
 
           if (filled.length > 0) {
             writeJSON(ORDERS_FILE, orders);
+          }
 
-          // Write trades to grid-trades.json
-          if (newTrades.length > 0) {
-            const allTrades = readJSON(TRADES_FILE);
-            allTrades.push(...newTrades);
-            writeJSON(TRADES_FILE, allTrades);
-            console.log(`📝 Recorded ${newTrades.length} trade(s) to grid-trades.json`);
-          }
-          }
           return filled;
         }
       };
@@ -1270,7 +1180,7 @@ async function monitorBot(args) {
 
         for (const filledOrder of filledOrders) {
           const oppositeSide = filledOrder.side === 'buy' ? 'sell' : 'buy';
-          const gridSpacing = bot.gridSpacing || (((bot.upper_price || bot.upperBound) - (bot.lower_price || bot.lowerBound)) / bot.numLevels);
+          const gridSpacing = bot.gridSpacing || ((bot.upperBound - bot.lowerBound) / bot.numLevels);
           
           let newPrice;
           if (filledOrder.side === 'buy') {
@@ -1297,13 +1207,6 @@ async function monitorBot(args) {
         }
 
         writeJSON(ORDERS_FILE, orders);
-
-            // ✅ FIXED: Append trades to grid-trades.json
-            const existingTrades = readJSON(TRADES_FILE);
-            const updatedTrades = existingTrades.concat(newTrades);
-            writeJSON(TRADES_FILE, updatedTrades);
-
-            console.log(`📝 Recorded ${newTrades.length} trade(s) to grid-trades.json`);
       } else {
         console.log('✅ No fills detected');
       }

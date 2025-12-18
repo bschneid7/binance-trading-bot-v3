@@ -638,7 +638,7 @@ async function createBot(args) {
 
   // Initialize exchange and get current price
   const { exchange, testMode } = initExchange();
-  const symbol = args.symbol || 'BTC/USD';
+  const symbol = 'BTC/USD';
 
   try {
     console.log('📊 Fetching current market data for BTC/USD...\n');
@@ -1205,8 +1205,8 @@ async function monitorBot(args) {
         checkFills: async function(exchange, symbol) {
           const orders = readJSON(ORDERS_FILE);
           const activeOrders = orders.filter(o => 
-            o.bot_name === botName && 
-            o.status === 'open'
+            o.botName === botName && 
+            o.status === 'active'
           );
 
           const filled = [];
@@ -1230,7 +1230,7 @@ async function monitorBot(args) {
               // ✅ FIXED: Record trade to grid-trades.json
               const trade = {
                 orderId: order.id,
-                bot_name: order.bot_name,
+                botName: order.botName,
                 symbol: order.symbol,
                 side: order.side.toUpperCase(),
                 price: currentPrice,
@@ -1246,15 +1246,8 @@ async function monitorBot(args) {
 
           if (filled.length > 0) {
             writeJSON(ORDERS_FILE, orders);
+          }
 
-          // Write trades to grid-trades.json
-          if (newTrades.length > 0) {
-            const allTrades = readJSON(TRADES_FILE);
-            allTrades.push(...newTrades);
-            writeJSON(TRADES_FILE, allTrades);
-            console.log(`📝 Recorded ${newTrades.length} trade(s) to grid-trades.json`);
-          }
-          }
           return filled;
         }
       };

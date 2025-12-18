@@ -1,0 +1,11 @@
+[Unit]
+Description=Grid Trading Bot - Daily Email Report Timer
+Requires=email-reporter.service
+
+[Timer]
+# Run daily at 8:00 PM EST (1:00 AM UTC next day)
+OnCalendar=*-*-* 01:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

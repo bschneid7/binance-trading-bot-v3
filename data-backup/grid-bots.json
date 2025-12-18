@@ -1,0 +1,242 @@
+{
+  "bots": [
+    {
+      "id": 1765353712592,
+      "name": "btc-test-1",
+      "symbol": "BTC/USD",
+      "lower_price": 95000,
+      "upper_price": 105000,
+      "grid_count": 10,
+      "order_size": 0.001,
+      "status": "running",
+      "created_at": "2025-12-10T08:01:52.592Z",
+      "current_price": 92163.31,
+      "stats": {
+        "trade_count": 5,
+        "buy_count": 5,
+        "sell_count": 0,
+        "total_profit": 0,
+        "avg_profit": 0
+      },
+      "grid_levels": [
+        {
+          "level": 1,
+          "price": 95000,
+          "type": "BUY",
+          "filled": true
+        },
+        {
+          "level": 2,
+          "price": 96111.11,
+          "type": "BUY",
+          "filled": true
+        },
+        {
+          "level": 3,
+          "price": 97222.22,
+          "type": "BUY",
+          "filled": true
+        },
+        {
+          "level": 4,
+          "price": 98333.33,
+          "type": "BUY",
+          "filled": true
+        },
+        {
+          "level": 5,
+          "price": 99444.44,
+          "type": "BUY",
+          "filled": true
+        },
+        {
+          "level": 6,
+          "price": 100555.56,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 7,
+          "price": 101666.67,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 8,
+          "price": 102777.78,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 9,
+          "price": 103888.89,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 10,
+          "price": 105000,
+          "type": "SELL",
+          "filled": false
+        }
+      ],
+      "trades": [
+        {
+          "id": 1765353817669,
+          "timestamp": "2025-12-10T08:03:37.669Z",
+          "type": "BUY",
+          "price": 99444.44,
+          "amount": 0.001,
+          "total": 99.44444,
+          "fee": 0.09944444000000001,
+          "paper": true
+        },
+        {
+          "id": 1765353817669,
+          "timestamp": "2025-12-10T08:03:37.669Z",
+          "type": "BUY",
+          "price": 98333.33,
+          "amount": 0.001,
+          "total": 98.33333,
+          "fee": 0.09833333000000001,
+          "paper": true
+        },
+        {
+          "id": 1765353817669,
+          "timestamp": "2025-12-10T08:03:37.669Z",
+          "type": "BUY",
+          "price": 97222.22,
+          "amount": 0.001,
+          "total": 97.22222000000001,
+          "fee": 0.09722222000000001,
+          "paper": true
+        },
+        {
+          "id": 1765353817669,
+          "timestamp": "2025-12-10T08:03:37.669Z",
+          "type": "BUY",
+          "price": 96111.11,
+          "amount": 0.001,
+          "total": 96.11111,
+          "fee": 0.09611111,
+          "paper": true
+        },
+        {
+          "id": 1765353817669,
+          "timestamp": "2025-12-10T08:03:37.669Z",
+          "type": "BUY",
+          "price": 95000,
+          "amount": 0.001,
+          "total": 95,
+          "fee": 0.095,
+          "paper": true
+        }
+      ],
+      "started_at": "2025-12-10T08:03:37.093Z"
+    },
+    {
+      "id": 1765353940048,
+      "name": "btc-active-test",
+      "symbol": "BTC/USD",
+      "lower_price": 91000,
+      "upper_price": 96000,
+      "grid_count": 10,
+      "order_size": 0.001,
+      "status": "running",
+      "created_at": "2025-12-10T08:05:40.048Z",
+      "current_price": 92467.18,
+      "stats": {
+        "trade_count": 2,
+        "buy_count": 2,
+        "sell_count": 0,
+        "total_profit": 0,
+        "avg_profit": 0
+      },
+      "grid_levels": [
+        {
+          "level": 1,
+          "price": 91000,
+          "type": "BUY",
+          "filled": false
+        },
+        {
+          "level": 2,
+          "price": 91555.56,
+          "type": "BUY",
+          "filled": false
+        },
+        {
+          "level": 3,
+          "price": 92111.11,
+          "type": "BUY",
+          "filled": false
+        },
+        {
+          "level": 4,
+          "price": 92666.67,
+          "type": "BUY",
+          "filled": true
+        },
+        {
+          "level": 5,
+          "price": 93222.22,
+          "type": "BUY",
+          "filled": true
+        },
+        {
+          "level": 6,
+          "price": 93777.78,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 7,
+          "price": 94333.33,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 8,
+          "price": 94888.89,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 9,
+          "price": 95444.44,
+          "type": "SELL",
+          "filled": false
+        },
+        {
+          "level": 10,
+          "price": 96000,
+          "type": "SELL",
+          "filled": false
+        }
+      ],
+      "trades": [
+        {
+          "id": 1765353943796,
+          "timestamp": "2025-12-10T08:05:43.796Z",
+          "type": "BUY",
+          "price": 93222.22,
+          "amount": 0.001,
+          "total": 93.22222000000001,
+          "fee": 0.09322222000000001,
+          "paper": true
+        },
+        {
+          "id": 1765353943796,
+          "timestamp": "2025-12-10T08:05:43.796Z",
+          "type": "BUY",
+          "price": 92666.67,
+          "amount": 0.001,
+          "total": 92.66667,
+          "fee": 0.09266666999999999,
+          "paper": true
+        }
+      ],
+      "started_at": "2025-12-10T08:05:43.218Z"
+    }
+  ]
+}

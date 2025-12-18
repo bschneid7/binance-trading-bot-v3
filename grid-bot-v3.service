@@ -1,0 +1,17 @@
+[Unit]
+Description=Grid Trading Bot - test-v3-btc
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/binance-trading-bot-v3
+Environment="NODE_ENV=production"
+ExecStart=/usr/bin/node /root/binance-trading-bot-v3/grid-bot-cli.mjs monitor --name test-v3-btc
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/binance-trading-bot-v3/monitor-v3.log
+StandardError=append:/root/binance-trading-bot-v3/monitor-v3.log
+
+[Install]
+WantedBy=multi-user.target

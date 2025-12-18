@@ -1,0 +1,14 @@
+[Unit]
+Description=Grid Trading Bot - Email Daily Reports
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/binance-trading-bot-v3
+ExecStart=/usr/bin/node /root/binance-trading-bot-v3/email-reporter.mjs send-summary
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

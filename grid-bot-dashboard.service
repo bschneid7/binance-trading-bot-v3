@@ -1,0 +1,16 @@
+[Unit]
+Description=Grid Bot Web Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/binance-trading-bot-v3
+ExecStart=/usr/bin/node /root/binance-trading-bot-v3/grid-bot-dashboard.mjs
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
