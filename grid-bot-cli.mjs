@@ -33,6 +33,7 @@ import dotenv from 'dotenv';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import enhancements from './enhancements.mjs';
 
 // Load environment
 dotenv.config({ path: '.env.production' });
@@ -1253,6 +1254,28 @@ async function monitorBot(args) {
             allTrades.push(...newTrades);
             writeJSON(TRADES_FILE, allTrades);
             console.log(`📝 Recorded ${newTrades.length} trade(s) to grid-trades.json`);
+          // Enhancement #7: Profit-Taking Check
+          if (enhancements.isEnhancementEnabled('PROFIT_TAKING', bot.name)) {
+            try {
+              const currentPrices = { [bot.symbol]: currentPrice };
+              const profitCheck = enhancements.shouldTakeProfit(
+                activeOrders,
+                currentPrices,
+                enhancements.ENHANCEMENTS.PROFIT_TAKING.threshold
+              );
+              
+              if (profitCheck.action === 'CLOSE_PROFITABLE') {
+                console.log(`💰 PROFIT TARGET HIT: ${profitCheck.reason}`);
+                console.log(`   Unrealized P&L: $${profitCheck.pnl.toFixed(2)} (${(profitCheck.pnlPercent * 100).toFixed(2)}%)`);
+                console.log(`   Consider closing positions to lock in profits`);
+                // Note: Actual closing logic would go here in production
+                // For now, just alert and continue trading
+              }
+            } catch (error) {
+              console.error('⚠️  Profit-taking check failed:', error.message);
+            }
+          }
+
           }
           }
           return filled;
