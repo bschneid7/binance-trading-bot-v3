@@ -1,434 +1,862 @@
 [
   {
-    "id": "2302429643",
+    "id": "2302948133",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
     "price": 84000,
     "amount": 0.00119,
     "status": "open",
-    "timestamp": 1765887682373
+    "timestamp": 1766017857982
   },
   {
-    "id": "2302429644",
+    "id": "2302948134",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
-    "price": 84305.33,
+    "price": 84225.26,
     "amount": 0.00118,
     "status": "open",
-    "timestamp": 1765887682503
+    "timestamp": 1766017858114
   },
   {
-    "id": "2302429645",
+    "id": "2302948135",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
-    "price": 84611.78,
+    "price": 84451.12,
     "amount": 0.00118,
     "status": "open",
-    "timestamp": 1765887682631
+    "timestamp": 1766017858241
   },
   {
-    "id": "2302429646",
+    "id": "2302948136",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
-    "price": 84919.33,
+    "price": 84677.59,
+    "amount": 0.00118,
+    "status": "open",
+    "timestamp": 1766017858369
+  },
+  {
+    "id": "2302948137",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "buy",
+    "price": 84904.66,
     "amount": 0.00117,
     "status": "open",
-    "timestamp": 1765887682760
+    "timestamp": 1766017858497
   },
   {
-    "id": "2302429647",
+    "id": "2302948139",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
-    "price": 85228.01,
+    "price": 85132.34,
     "amount": 0.00117,
     "status": "open",
-    "timestamp": 1765887682888
+    "timestamp": 1766017858625
   },
   {
-    "id": "2302429648",
+    "id": "2302948142",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
-    "price": 85537.8,
-    "amount": 0.00116,
+    "price": 85360.64,
+    "amount": 0.00117,
     "status": "open",
-    "timestamp": 1765887683015
+    "timestamp": 1766017858755
   },
   {
-    "id": "2302429649",
+    "id": "2302948143",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
-    "price": 85848.72,
+    "price": 85589.54,
     "amount": 0.00116,
     "status": "open",
-    "timestamp": 1765887683144
+    "timestamp": 1766017858881
   },
   {
-    "id": "2302429650",
+    "id": "2302948144",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "buy",
-    "price": 86160.78,
+    "price": 85819.06,
     "amount": 0.00116,
     "status": "open",
-    "timestamp": 1765887683274
+    "timestamp": 1766017859010
   },
   {
-    "id": "2302429661",
+    "id": "2302948145",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "buy",
+    "price": 86049.2,
+    "amount": 0.00116,
+    "status": "open",
+    "timestamp": 1766017859138
+  },
+  {
+    "id": "2302948147",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 89669.13,
+    "price": 86511.32,
+    "amount": 0.00115,
+    "status": "open",
+    "timestamp": 1766017859394
+  },
+  {
+    "id": "2302948148",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 86743.32,
+    "amount": 0.00115,
+    "status": "open",
+    "timestamp": 1766017859521
+  },
+  {
+    "id": "2302948149",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 86975.93,
+    "amount": 0.00114,
+    "status": "open",
+    "timestamp": 1766017859649
+  },
+  {
+    "id": "2302948150",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 87209.17,
+    "amount": 0.00114,
+    "status": "open",
+    "timestamp": 1766017859775
+  },
+  {
+    "id": "2302948151",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 87443.03,
+    "amount": 0.00114,
+    "status": "open",
+    "timestamp": 1766017859903
+  },
+  {
+    "id": "2302948152",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 87677.52,
+    "amount": 0.00114,
+    "status": "open",
+    "timestamp": 1766017860036
+  },
+  {
+    "id": "2302948153",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 87912.64,
+    "amount": 0.00113,
+    "status": "open",
+    "timestamp": 1766017860165
+  },
+  {
+    "id": "2302948154",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 88148.39,
+    "amount": 0.00113,
+    "status": "open",
+    "timestamp": 1766017860291
+  },
+  {
+    "id": "2302948155",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 88384.77,
+    "amount": 0.00113,
+    "status": "open",
+    "timestamp": 1766017860418
+  },
+  {
+    "id": "2302948157",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 88621.79,
+    "amount": 0.00112,
+    "status": "open",
+    "timestamp": 1766017860547
+  },
+  {
+    "id": "2302948158",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 88859.44,
+    "amount": 0.00112,
+    "status": "open",
+    "timestamp": 1766017860674
+  },
+  {
+    "id": "2302948160",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 89097.73,
+    "amount": 0.00112,
+    "status": "open",
+    "timestamp": 1766017860802
+  },
+  {
+    "id": "2302948161",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 89336.66,
     "amount": 0.00111,
-    "status": "filled",
-    "timestamp": 1765887684680,
-    "filled_at": "2025-12-17T15:00:10.977Z",
-    "filled_price": 89711.54
+    "status": "open",
+    "timestamp": 1766017860929
   },
   {
-    "id": "2302429662",
+    "id": "2302948162",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 89995.07,
+    "price": 89576.22,
     "amount": 0.00111,
     "status": "open",
-    "timestamp": 1765887684809
+    "timestamp": 1766017861058
   },
   {
-    "id": "2302429663",
+    "id": "2302948163",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 90322.2,
+    "price": 89816.44,
+    "amount": 0.00111,
+    "status": "open",
+    "timestamp": 1766017861188
+  },
+  {
+    "id": "2302948164",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 90057.29,
+    "amount": 0.00111,
+    "status": "open",
+    "timestamp": 1766017861317
+  },
+  {
+    "id": "2302948165",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 90298.79,
     "amount": 0.0011,
     "status": "open",
-    "timestamp": 1765887684938
+    "timestamp": 1766017861446
   },
   {
-    "id": "2302429664",
+    "id": "2302948166",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 90650.51,
+    "price": 90540.94,
     "amount": 0.0011,
     "status": "open",
-    "timestamp": 1765887685064
+    "timestamp": 1766017861575
   },
   {
-    "id": "2302429665",
+    "id": "2302948167",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 90980.02,
+    "price": 90783.74,
+    "amount": 0.0011,
+    "status": "open",
+    "timestamp": 1766017861702
+  },
+  {
+    "id": "2302948168",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 91027.19,
     "amount": 0.00109,
     "status": "open",
-    "timestamp": 1765887685190
+    "timestamp": 1766017861834
   },
   {
-    "id": "2302429666",
+    "id": "2302948169",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 91310.72,
+    "price": 91271.29,
     "amount": 0.00109,
     "status": "open",
-    "timestamp": 1765887685317
+    "timestamp": 1766017861963
   },
   {
-    "id": "2302429667",
+    "id": "2302948170",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 91642.63,
+    "price": 91516.04,
     "amount": 0.00109,
     "status": "open",
-    "timestamp": 1765887685445
+    "timestamp": 1766017862092
   },
   {
-    "id": "2302429668",
+    "id": "2302948171",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 91975.74,
+    "price": 91761.46,
     "amount": 0.00108,
     "status": "open",
-    "timestamp": 1765887685573
+    "timestamp": 1766017862218
   },
   {
-    "id": "2302429669",
+    "id": "2302948172",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 92310.06,
+    "price": 92007.53,
     "amount": 0.00108,
     "status": "open",
-    "timestamp": 1765887685698
+    "timestamp": 1766017862347
   },
   {
-    "id": "2302429670",
+    "id": "2302948173",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 92645.6,
+    "price": 92254.26,
+    "amount": 0.00108,
+    "status": "open",
+    "timestamp": 1766017862474
+  },
+  {
+    "id": "2302948174",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 92501.65,
+    "amount": 0.00108,
+    "status": "open",
+    "timestamp": 1766017862600
+  },
+  {
+    "id": "2302948175",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 92749.71,
     "amount": 0.00107,
     "status": "open",
-    "timestamp": 1765887685825
+    "timestamp": 1766017862728
   },
   {
-    "id": "2302429671",
+    "id": "2302948176",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 92982.36,
+    "price": 92998.43,
     "amount": 0.00107,
     "status": "open",
-    "timestamp": 1765887685953
+    "timestamp": 1766017862856
   },
   {
-    "id": "2302429672",
+    "id": "2302948177",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 93320.34,
+    "price": 93247.82,
     "amount": 0.00107,
     "status": "open",
-    "timestamp": 1765887686080
+    "timestamp": 1766017862982
   },
   {
-    "id": "2302429673",
+    "id": "2302948178",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
-    "price": 93659.56,
+    "price": 93497.87,
     "amount": 0.00106,
     "status": "open",
-    "timestamp": 1765887686207
+    "timestamp": 1766017863108
   },
   {
-    "id": "2302429674",
+    "id": "2302948179",
+    "bot_name": "live-btc-bot",
+    "symbol": "BTC/USD",
+    "side": "sell",
+    "price": 93748.6,
+    "amount": 0.00106,
+    "status": "open",
+    "timestamp": 1766017863235
+  },
+  {
+    "id": "2302948180",
     "bot_name": "live-btc-bot",
     "symbol": "BTC/USD",
     "side": "sell",
     "price": 94000,
     "amount": 0.00106,
     "status": "open",
-    "timestamp": 1765887686334
+    "timestamp": 1766017863363
   },
   {
-    "id": "1015752424",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 110,
-    "amount": 0.363,
-    "status": "open",
-    "timestamp": 1765887697675
-  },
-  {
-    "id": "1015752425",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 111.33,
-    "amount": 0.359,
-    "status": "open",
-    "timestamp": 1765887697806
-  },
-  {
-    "id": "1015752426",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 112.67,
-    "amount": 0.355,
-    "status": "open",
-    "timestamp": 1765887697937
-  },
-  {
-    "id": "1015752427",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 114.04,
-    "amount": 0.35,
-    "status": "open",
-    "timestamp": 1765887698063
-  },
-  {
-    "id": "1015752428",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 115.41,
-    "amount": 0.346,
-    "status": "open",
-    "timestamp": 1765887698191
-  },
-  {
-    "id": "1015752429",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 116.81,
-    "amount": 0.342,
-    "status": "open",
-    "timestamp": 1765887698320
-  },
-  {
-    "id": "1015752430",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 118.22,
-    "amount": 0.338,
-    "status": "open",
-    "timestamp": 1765887698449
-  },
-  {
-    "id": "1015752431",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 119.65,
-    "amount": 0.334,
-    "status": "open",
-    "timestamp": 1765887698577
-  },
-  {
-    "id": "1015752432",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 121.09,
-    "amount": 0.33,
-    "status": "open",
-    "timestamp": 1765887698704
-  },
-  {
-    "id": "1015752433",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 122.56,
-    "amount": 0.326,
-    "status": "open",
-    "timestamp": 1765887698831
-  },
-  {
-    "id": "1015752434",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 124.04,
-    "amount": 0.322,
-    "status": "open",
-    "timestamp": 1765887698957
-  },
-  {
-    "id": "1015752435",
-    "bot_name": "live-sol-bot",
-    "symbol": "SOL/USD",
-    "side": "buy",
-    "price": 125.54,
-    "amount": 0.318,
-    "status": "open",
-    "timestamp": 1765887699083
-  },
-  {
-    "id": "1710601405",
+    "id": "1710854713",
     "bot_name": "live-eth-bot",
     "symbol": "ETH/USD",
     "side": "buy",
-    "price": 2700,
-    "amount": 0.0222,
+    "price": 2250,
+    "amount": 0.0266,
     "status": "open",
-    "timestamp": 1765887690520
+    "timestamp": 1766017880401
   },
   {
-    "id": "1710601406",
+    "id": "1710854714",
     "bot_name": "live-eth-bot",
     "symbol": "ETH/USD",
     "side": "buy",
-    "price": 2723.66,
-    "amount": 0.022,
+    "price": 2279.73,
+    "amount": 0.0263,
     "status": "open",
-    "timestamp": 1765887690652
+    "timestamp": 1766017880533
   },
   {
-    "id": "1710601407",
+    "id": "1710854715",
     "bot_name": "live-eth-bot",
     "symbol": "ETH/USD",
     "side": "buy",
-    "price": 2747.53,
-    "amount": 0.0218,
+    "price": 2309.86,
+    "amount": 0.0259,
     "status": "open",
-    "timestamp": 1765887690779
+    "timestamp": 1766017880659
   },
   {
-    "id": "1710601409",
+    "id": "1710854716",
     "bot_name": "live-eth-bot",
     "symbol": "ETH/USD",
     "side": "buy",
-    "price": 2771.6,
+    "price": 2340.38,
+    "amount": 0.0256,
+    "status": "open",
+    "timestamp": 1766017880788
+  },
+  {
+    "id": "1710854717",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2371.3,
+    "amount": 0.0253,
+    "status": "open",
+    "timestamp": 1766017880917
+  },
+  {
+    "id": "1710854718",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2402.64,
+    "amount": 0.0249,
+    "status": "open",
+    "timestamp": 1766017881046
+  },
+  {
+    "id": "1710854719",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2434.38,
+    "amount": 0.0246,
+    "status": "open",
+    "timestamp": 1766017881173
+  },
+  {
+    "id": "1710854720",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2466.55,
+    "amount": 0.0243,
+    "status": "open",
+    "timestamp": 1766017881300
+  },
+  {
+    "id": "1710854721",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2499.14,
+    "amount": 0.024,
+    "status": "open",
+    "timestamp": 1766017881430
+  },
+  {
+    "id": "1710854722",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2532.17,
+    "amount": 0.0236,
+    "status": "open",
+    "timestamp": 1766017881558
+  },
+  {
+    "id": "1710854723",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2565.63,
+    "amount": 0.0233,
+    "status": "open",
+    "timestamp": 1766017881687
+  },
+  {
+    "id": "1710854724",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2599.53,
+    "amount": 0.023,
+    "status": "open",
+    "timestamp": 1766017881815
+  },
+  {
+    "id": "1710854726",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2633.88,
+    "amount": 0.0227,
+    "status": "open",
+    "timestamp": 1766017881943
+  },
+  {
+    "id": "1710854727",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2668.68,
+    "amount": 0.0224,
+    "status": "open",
+    "timestamp": 1766017882070
+  },
+  {
+    "id": "1710854728",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2703.95,
+    "amount": 0.0221,
+    "status": "open",
+    "timestamp": 1766017882199
+  },
+  {
+    "id": "1710854729",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2739.68,
+    "amount": 0.0219,
+    "status": "open",
+    "timestamp": 1766017882327
+  },
+  {
+    "id": "1710854730",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2775.88,
     "amount": 0.0216,
     "status": "open",
-    "timestamp": 1765887690907
+    "timestamp": 1766017882455
   },
   {
-    "id": "1710601410",
+    "id": "1710854731",
     "bot_name": "live-eth-bot",
     "symbol": "ETH/USD",
     "side": "buy",
-    "price": 2795.89,
-    "amount": 0.0214,
+    "price": 2812.56,
+    "amount": 0.0213,
     "status": "open",
-    "timestamp": 1765887691038
+    "timestamp": 1766017882583
   },
   {
-    "id": "1710601411",
+    "id": "1710854732",
     "bot_name": "live-eth-bot",
     "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2820.39,
-    "amount": 0.0212,
-    "status": "open",
-    "timestamp": 1765887691168
-  },
-  {
-    "id": "1710601412",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2845.11,
+    "side": "sell",
+    "price": 2849.72,
     "amount": 0.021,
     "status": "open",
-    "timestamp": 1765887691297
+    "timestamp": 1766017882711
   },
   {
-    "id": "1710601413",
+    "id": "1710854733",
     "bot_name": "live-eth-bot",
     "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2870.04,
-    "amount": 0.0209,
+    "side": "sell",
+    "price": 2887.38,
+    "amount": 0.0207,
     "status": "open",
-    "timestamp": 1765887691425
+    "timestamp": 1766017882842
   },
   {
-    "id": "live-btc-bot-1765983611009-b3cxmq5oe",
-    "botName": "live-btc-bot",
-    "symbol": "BTC/USD",
+    "id": "1710854734",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "sell",
+    "price": 2925.53,
+    "amount": 0.0205,
+    "status": "open",
+    "timestamp": 1766017882969
+  },
+  {
+    "id": "1710854735",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "sell",
+    "price": 3003.36,
+    "amount": 0.0199,
+    "status": "open",
+    "timestamp": 1766017883221
+  },
+  {
+    "id": "1016030031",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
     "side": "buy",
-    "price": null,
-    "amount": 0.00111,
-    "status": "active",
-    "created_at": "2025-12-17T15:00:11.009Z"
+    "price": 98,
+    "amount": 0.408,
+    "status": "open",
+    "timestamp": 1766017901544
+  },
+  {
+    "id": "1016030032",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 99.23,
+    "amount": 0.403,
+    "status": "open",
+    "timestamp": 1766017901672
+  },
+  {
+    "id": "1016030033",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 100.47,
+    "amount": 0.398,
+    "status": "open",
+    "timestamp": 1766017901799
+  },
+  {
+    "id": "1016030035",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 101.73,
+    "amount": 0.393,
+    "status": "open",
+    "timestamp": 1766017901925
+  },
+  {
+    "id": "1016030036",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 103.01,
+    "amount": 0.388,
+    "status": "open",
+    "timestamp": 1766017902053
+  },
+  {
+    "id": "1016030037",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 104.3,
+    "amount": 0.383,
+    "status": "open",
+    "timestamp": 1766017902183
+  },
+  {
+    "id": "1016030040",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 105.61,
+    "amount": 0.378,
+    "status": "open",
+    "timestamp": 1766017902309
+  },
+  {
+    "id": "1016030042",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 106.93,
+    "amount": 0.374,
+    "status": "open",
+    "timestamp": 1766017902438
+  },
+  {
+    "id": "1016030044",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 108.27,
+    "amount": 0.369,
+    "status": "open",
+    "timestamp": 1766017902570
+  },
+  {
+    "id": "1016030045",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 109.63,
+    "amount": 0.364,
+    "status": "open",
+    "timestamp": 1766017902695
+  },
+  {
+    "id": "1016030046",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 111,
+    "amount": 0.36,
+    "status": "open",
+    "timestamp": 1766017902823
+  },
+  {
+    "id": "1016030047",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 112.39,
+    "amount": 0.355,
+    "status": "open",
+    "timestamp": 1766017902951
+  },
+  {
+    "id": "1016030048",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 113.8,
+    "amount": 0.351,
+    "status": "open",
+    "timestamp": 1766017903078
+  },
+  {
+    "id": "1016030049",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 115.23,
+    "amount": 0.347,
+    "status": "open",
+    "timestamp": 1766017903206
+  },
+  {
+    "id": "1016030050",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 116.67,
+    "amount": 0.342,
+    "status": "open",
+    "timestamp": 1766017903331
+  },
+  {
+    "id": "1016030051",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 118.14,
+    "amount": 0.338,
+    "status": "open",
+    "timestamp": 1766017903459
+  },
+  {
+    "id": "1016030052",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 119.62,
+    "amount": 0.334,
+    "status": "open",
+    "timestamp": 1766017903588
+  },
+  {
+    "id": "1016030053",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 121.12,
+    "amount": 0.33,
+    "status": "open",
+    "timestamp": 1766017903714
+  },
+  {
+    "id": "1016030054",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "buy",
+    "price": 122.63,
+    "amount": 0.326,
+    "status": "open",
+    "timestamp": 1766017903842
+  },
+  {
+    "id": "1016030055",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "sell",
+    "price": 124.17,
+    "amount": 0.322,
+    "status": "open",
+    "timestamp": 1766017903969
+  },
+  {
+    "id": "1016030056",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "sell",
+    "price": 125.73,
+    "amount": 0.318,
+    "status": "open",
+    "timestamp": 1766017904096
+  },
+  {
+    "id": "1016030057",
+    "bot_name": "live-sol-bot",
+    "symbol": "SOL/USD",
+    "side": "sell",
+    "price": 132.15,
+    "amount": 0.302,
+    "status": "open",
+    "timestamp": 1766017904606
   }
 ]

@@ -638,7 +638,7 @@ async function createBot(args) {
 
   // Initialize exchange and get current price
   const { exchange, testMode } = initExchange();
-  const symbol = 'BTC/USD';
+  const symbol = args.symbol || 'BTC/USD';
 
   try {
     console.log('📊 Fetching current market data for BTC/USD...\n');
@@ -1255,7 +1255,6 @@ async function monitorBot(args) {
             console.log(`📝 Recorded ${newTrades.length} trade(s) to grid-trades.json`);
           }
           }
-
           return filled;
         }
       };
