@@ -1361,8 +1361,6 @@ async function monitorBot(args) {
       console.log(`📊 Stats: ${totalFills} fills, ${totalReplacements} replacements`);
       
       // Check for profit-taking opportunities
-      const orders = readJSON(ORDERS_FILE);
-      const activeOrders = orders.filter(o => o.bot_name === botName && o.status === 'open');
       const profitCheck = await checkProfitTaking(exchange, botName, activeOrders);
       if (profitCheck && profitCheck.action === 'PROFIT_TARGET_HIT') {
         console.log(`\n💰 PROFIT TARGET HIT!`);

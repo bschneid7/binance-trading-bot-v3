@@ -1097,56 +1097,6 @@ async function deleteBot(args) {
 }
 
 // Monitor bot with continuous polling
-
-// Profit-Taking Check Function
-async function checkProfitTaking(exchange, botName, activeOrders) {
-  try {
-    if (activeOrders.length === 0) return null;
-    
-    const PROFIT_THRESHOLD = 0.025; // 2.5%
-    const symbols = [...new Set(activeOrders.map(o => o.symbol))];
-    const prices = {};
-    
-    for (const symbol of symbols) {
-      const ticker = await exchange.fetchTicker(symbol);
-      prices[symbol] = ticker.last;
-    }
-    
-    let totalCost = 0;
-    let totalValue = 0;
-    
-    for (const order of activeOrders) {
-      const currentPrice = prices[order.symbol];
-      const orderValue = order.price * order.amount;
-      
-      if (order.side === 'buy') {
-        totalCost += orderValue;
-        totalValue += currentPrice * order.amount;
-      } else {
-        totalCost += orderValue * 0.98;
-        totalValue += currentPrice * order.amount;
-      }
-    }
-    
-    const unrealizedPnL = totalValue - totalCost;
-    const pnlPercent = totalCost > 0 ? unrealizedPnL / totalCost : 0;
-    
-    if (pnlPercent >= PROFIT_THRESHOLD) {
-      return {
-        action: 'PROFIT_TARGET_HIT',
-        pnl: unrealizedPnL,
-        pnlPercent,
-        threshold: PROFIT_THRESHOLD
-      };
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('⚠️  Profit-taking check failed:', error.message);
-    return null;
-  }
-}
-
 async function monitorBot(args) {
   const botName = args.name;
   const simulateVolatility = args['simulate-volatility'] || args.simulate || false;
@@ -1359,17 +1309,6 @@ async function monitorBot(args) {
       }
 
       console.log(`📊 Stats: ${totalFills} fills, ${totalReplacements} replacements`);
-      
-      // Check for profit-taking opportunities
-      const orders = readJSON(ORDERS_FILE);
-      const activeOrders = orders.filter(o => o.bot_name === botName && o.status === 'open');
-      const profitCheck = await checkProfitTaking(exchange, botName, activeOrders);
-      if (profitCheck && profitCheck.action === 'PROFIT_TARGET_HIT') {
-        console.log(`\n💰 PROFIT TARGET HIT!`);
-        console.log(`   Unrealized P&L: $${profitCheck.pnl.toFixed(2)} (${(profitCheck.pnlPercent * 100).toFixed(2)}%)`);
-        console.log(`   Threshold: ${(profitCheck.threshold * 100).toFixed(2)}%`);
-        console.log(`   🎯 Consider closing positions to lock in profit\n`);
-      }
 
     } catch (error) {
       console.error(`\n❌ Error in monitoring loop:`, error.message);

@@ -20,226 +20,6 @@
     "created_at": "2025-12-18T02:18:55.870Z"
   },
   {
-    "id": "1710854713",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2250,
-    "amount": 0.0266,
-    "status": "open",
-    "timestamp": 1766017880401
-  },
-  {
-    "id": "1710854714",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2279.73,
-    "amount": 0.0263,
-    "status": "open",
-    "timestamp": 1766017880533
-  },
-  {
-    "id": "1710854715",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2309.86,
-    "amount": 0.0259,
-    "status": "open",
-    "timestamp": 1766017880659
-  },
-  {
-    "id": "1710854716",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2340.38,
-    "amount": 0.0256,
-    "status": "open",
-    "timestamp": 1766017880788
-  },
-  {
-    "id": "1710854717",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2371.3,
-    "amount": 0.0253,
-    "status": "open",
-    "timestamp": 1766017880917
-  },
-  {
-    "id": "1710854718",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2402.64,
-    "amount": 0.0249,
-    "status": "open",
-    "timestamp": 1766017881046
-  },
-  {
-    "id": "1710854719",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2434.38,
-    "amount": 0.0246,
-    "status": "open",
-    "timestamp": 1766017881173
-  },
-  {
-    "id": "1710854720",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2466.55,
-    "amount": 0.0243,
-    "status": "open",
-    "timestamp": 1766017881300
-  },
-  {
-    "id": "1710854721",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2499.14,
-    "amount": 0.024,
-    "status": "open",
-    "timestamp": 1766017881430
-  },
-  {
-    "id": "1710854722",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2532.17,
-    "amount": 0.0236,
-    "status": "open",
-    "timestamp": 1766017881558
-  },
-  {
-    "id": "1710854723",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2565.63,
-    "amount": 0.0233,
-    "status": "open",
-    "timestamp": 1766017881687
-  },
-  {
-    "id": "1710854724",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2599.53,
-    "amount": 0.023,
-    "status": "open",
-    "timestamp": 1766017881815
-  },
-  {
-    "id": "1710854726",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2633.88,
-    "amount": 0.0227,
-    "status": "open",
-    "timestamp": 1766017881943
-  },
-  {
-    "id": "1710854727",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2668.68,
-    "amount": 0.0224,
-    "status": "open",
-    "timestamp": 1766017882070
-  },
-  {
-    "id": "1710854728",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2703.95,
-    "amount": 0.0221,
-    "status": "open",
-    "timestamp": 1766017882199
-  },
-  {
-    "id": "1710854729",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2739.68,
-    "amount": 0.0219,
-    "status": "open",
-    "timestamp": 1766017882327
-  },
-  {
-    "id": "1710854730",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2775.88,
-    "amount": 0.0216,
-    "status": "open",
-    "timestamp": 1766017882455
-  },
-  {
-    "id": "1710854731",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "buy",
-    "price": 2812.56,
-    "amount": 0.0213,
-    "status": "open",
-    "timestamp": 1766017882583
-  },
-  {
-    "id": "1710854732",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "sell",
-    "price": 2849.72,
-    "amount": 0.021,
-    "status": "open",
-    "timestamp": 1766017882711
-  },
-  {
-    "id": "1710854733",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "sell",
-    "price": 2887.38,
-    "amount": 0.0207,
-    "status": "open",
-    "timestamp": 1766017882842
-  },
-  {
-    "id": "1710854734",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "sell",
-    "price": 2925.53,
-    "amount": 0.0205,
-    "status": "open",
-    "timestamp": 1766017882969
-  },
-  {
-    "id": "1710854735",
-    "bot_name": "live-eth-bot",
-    "symbol": "ETH/USD",
-    "side": "sell",
-    "price": 3003.36,
-    "amount": 0.0199,
-    "status": "open",
-    "timestamp": 1766017883221
-  },
-  {
     "id": "1016030031",
     "bot_name": "live-sol-bot",
     "symbol": "SOL/USD",
@@ -458,6 +238,226 @@
     "amount": 0.302,
     "status": "open",
     "timestamp": 1766017904606
+  },
+  {
+    "id": "1710854713",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2250,
+    "amount": 0.0266,
+    "status": "open",
+    "timestamp": 1766017880401
+  },
+  {
+    "id": "1710854714",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2279.73,
+    "amount": 0.0263,
+    "status": "open",
+    "timestamp": 1766017880533
+  },
+  {
+    "id": "1710854715",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2309.86,
+    "amount": 0.0259,
+    "status": "open",
+    "timestamp": 1766017880659
+  },
+  {
+    "id": "1710854716",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2340.38,
+    "amount": 0.0256,
+    "status": "open",
+    "timestamp": 1766017880788
+  },
+  {
+    "id": "1710854717",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2371.3,
+    "amount": 0.0253,
+    "status": "open",
+    "timestamp": 1766017880917
+  },
+  {
+    "id": "1710854718",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2402.64,
+    "amount": 0.0249,
+    "status": "open",
+    "timestamp": 1766017881046
+  },
+  {
+    "id": "1710854719",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2434.38,
+    "amount": 0.0246,
+    "status": "open",
+    "timestamp": 1766017881173
+  },
+  {
+    "id": "1710854720",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2466.55,
+    "amount": 0.0243,
+    "status": "open",
+    "timestamp": 1766017881300
+  },
+  {
+    "id": "1710854721",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2499.14,
+    "amount": 0.024,
+    "status": "open",
+    "timestamp": 1766017881430
+  },
+  {
+    "id": "1710854722",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2532.17,
+    "amount": 0.0236,
+    "status": "open",
+    "timestamp": 1766017881558
+  },
+  {
+    "id": "1710854723",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2565.63,
+    "amount": 0.0233,
+    "status": "open",
+    "timestamp": 1766017881687
+  },
+  {
+    "id": "1710854724",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2599.53,
+    "amount": 0.023,
+    "status": "open",
+    "timestamp": 1766017881815
+  },
+  {
+    "id": "1710854726",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2633.88,
+    "amount": 0.0227,
+    "status": "open",
+    "timestamp": 1766017881943
+  },
+  {
+    "id": "1710854727",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2668.68,
+    "amount": 0.0224,
+    "status": "open",
+    "timestamp": 1766017882070
+  },
+  {
+    "id": "1710854728",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2703.95,
+    "amount": 0.0221,
+    "status": "open",
+    "timestamp": 1766017882199
+  },
+  {
+    "id": "1710854729",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2739.68,
+    "amount": 0.0219,
+    "status": "open",
+    "timestamp": 1766017882327
+  },
+  {
+    "id": "1710854730",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2775.88,
+    "amount": 0.0216,
+    "status": "open",
+    "timestamp": 1766017882455
+  },
+  {
+    "id": "1710854731",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "buy",
+    "price": 2812.56,
+    "amount": 0.0213,
+    "status": "open",
+    "timestamp": 1766017882583
+  },
+  {
+    "id": "1710854732",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "sell",
+    "price": 2849.72,
+    "amount": 0.021,
+    "status": "open",
+    "timestamp": 1766017882711
+  },
+  {
+    "id": "1710854733",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "sell",
+    "price": 2887.38,
+    "amount": 0.0207,
+    "status": "open",
+    "timestamp": 1766017882842
+  },
+  {
+    "id": "1710854734",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "sell",
+    "price": 2925.53,
+    "amount": 0.0205,
+    "status": "open",
+    "timestamp": 1766017882969
+  },
+  {
+    "id": "1710854735",
+    "bot_name": "live-eth-bot",
+    "symbol": "ETH/USD",
+    "side": "sell",
+    "price": 3003.36,
+    "amount": 0.0199,
+    "status": "open",
+    "timestamp": 1766017883221
   },
   {
     "id": "2302948133",
