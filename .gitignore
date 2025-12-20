@@ -105,3 +105,17 @@ temp/
 *.db
 *.sqlite
 *.sqlite3
+
+# Backup files - NEVER commit these
+*.backup
+*.backup.*
+*-old.*
+*-old
+*.orig
+archive/
+data-backup/
+data-backup-*/
+
+# Data directory backups
+data/*.backup*
+data/*-backup-*
