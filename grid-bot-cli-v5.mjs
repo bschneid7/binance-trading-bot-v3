@@ -809,7 +809,8 @@ async function main() {
       break;
     case 'monitor':
       await monitorBot(args);
-      break;
+      // Note: monitorBot runs indefinitely, closeDatabase is called in SIGINT handler
+      return;
     case 'delete':
       await deleteBot(args);
       break;
@@ -855,7 +856,9 @@ Examples:
   closeDatabase();
 }
 
-main().catch(error => {
+main().then(() => {
+  // Normal exit for non-monitor commands
+}).catch(error => {
   console.error('❌ Fatal error:', error.message);
   closeDatabase();
   process.exit(1);
