@@ -19,8 +19,13 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import ccxt from 'ccxt';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getDatabase } from './database.mjs';
 import { execSync } from 'child_process';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: '.env.production' });
 
@@ -31,6 +36,9 @@ const PORT = process.env.API_PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize exchange (read-only for most operations)
 let exchange = null;
@@ -412,6 +420,11 @@ app.get('/api/portfolio', async (req, res) => {
     
     res.json({
       timestamp: new Date().toISOString(),
+      usdBalance: usdTotal,
+      cryptoValue: totalCryptoValue,
+      totalValue: usdTotal + totalCryptoValue,
+      pnl: totalPnL,
+      pnlPercent: totalPnL / (usdTotal + totalCryptoValue) * 100,
       usd: {
         free: usdBalance,
         total: usdTotal,
@@ -427,6 +440,34 @@ app.get('/api/portfolio', async (req, res) => {
         totalPnL,
       },
     });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/trades - Get recent trades across all bots
+ */
+app.get('/api/trades', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const bots = db.getAllBots();
+    const allTrades = [];
+    
+    for (const bot of bots) {
+      const trades = db.getBotTrades(bot.name, limit);
+      for (const trade of trades) {
+        allTrades.push({
+          ...trade,
+          botName: bot.name,
+        });
+      }
+    }
+    
+    // Sort by timestamp descending and limit
+    allTrades.sort((a, b) => new Date(b.created_at || b.timestamp) - new Date(a.created_at || a.timestamp));
+    
+    res.json(allTrades.slice(0, limit));
   } catch (error) {
     res.status(500).json({ error: 'Internal error', message: error.message });
   }

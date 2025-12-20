@@ -1,0 +1,17 @@
+[Unit]
+Description=Grid Trading Bot - REST API Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/binance-trading-bot-v3
+ExecStart=/usr/bin/node /root/binance-trading-bot-v3/api-server.mjs
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/binance-trading-bot-v3/logs/api-server.log
+StandardError=append:/root/binance-trading-bot-v3/logs/api-server.log
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

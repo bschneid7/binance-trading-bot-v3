@@ -29,6 +29,7 @@ echo "📋 Installing service files..."
 cp "$BOT_DIR/systemd/grid-bot-btc.service" "$SYSTEMD_DIR/"
 cp "$BOT_DIR/systemd/grid-bot-eth.service" "$SYSTEMD_DIR/"
 cp "$BOT_DIR/systemd/grid-bot-sol.service" "$SYSTEMD_DIR/"
+cp "$BOT_DIR/systemd/grid-bot-api.service" "$SYSTEMD_DIR/"
 cp "$BOT_DIR/systemd/health-check-email.service" "$SYSTEMD_DIR/"
 cp "$BOT_DIR/systemd/health-check-email.timer" "$SYSTEMD_DIR/"
 
@@ -41,6 +42,7 @@ echo "⚡ Enabling services to start on boot..."
 systemctl enable grid-bot-btc.service
 systemctl enable grid-bot-eth.service
 systemctl enable grid-bot-sol.service
+systemctl enable grid-bot-api.service
 
 # Enable daily health check email timer
 echo "📧 Enabling daily health check email..."
@@ -56,6 +58,7 @@ echo "Services installed:"
 echo "  ✅ grid-bot-btc.service (enabled)"
 echo "  ✅ grid-bot-eth.service (enabled)"
 echo "  ✅ grid-bot-sol.service (enabled)"
+echo "  ✅ grid-bot-api.service (enabled - REST API on port 3001)"
 echo "  ✅ health-check-email.timer (enabled - runs daily at 8 AM UTC)"
 echo ""
 echo "To start the BTC and ETH monitors now, run:"
