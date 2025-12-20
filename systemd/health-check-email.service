@@ -1,0 +1,12 @@
+[Unit]
+Description=Grid Trading Bot - Daily Health Check Email
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/binance-trading-bot-v3
+ExecStart=/usr/bin/node /root/binance-trading-bot-v3/health-check-email.mjs
+StandardOutput=append:/root/binance-trading-bot-v3/logs/health-check-email.log
+StandardError=append:/root/binance-trading-bot-v3/logs/health-check-email.log
+Environment=NODE_ENV=production

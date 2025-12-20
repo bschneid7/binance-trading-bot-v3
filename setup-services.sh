@@ -29,6 +29,8 @@ echo "📋 Installing service files..."
 cp "$BOT_DIR/systemd/grid-bot-btc.service" "$SYSTEMD_DIR/"
 cp "$BOT_DIR/systemd/grid-bot-eth.service" "$SYSTEMD_DIR/"
 cp "$BOT_DIR/systemd/grid-bot-sol.service" "$SYSTEMD_DIR/"
+cp "$BOT_DIR/systemd/health-check-email.service" "$SYSTEMD_DIR/"
+cp "$BOT_DIR/systemd/health-check-email.timer" "$SYSTEMD_DIR/"
 
 # Reload systemd
 echo "🔄 Reloading systemd daemon..."
@@ -38,7 +40,12 @@ systemctl daemon-reload
 echo "⚡ Enabling services to start on boot..."
 systemctl enable grid-bot-btc.service
 systemctl enable grid-bot-eth.service
-# Note: SOL bot is not enabled by default since it's currently stopped
+systemctl enable grid-bot-sol.service
+
+# Enable daily health check email timer
+echo "📧 Enabling daily health check email..."
+systemctl enable health-check-email.timer
+systemctl start health-check-email.timer
 
 echo ""
 echo "════════════════════════════════════════════════════════════"
@@ -48,7 +55,8 @@ echo ""
 echo "Services installed:"
 echo "  ✅ grid-bot-btc.service (enabled)"
 echo "  ✅ grid-bot-eth.service (enabled)"
-echo "  ⏸️  grid-bot-sol.service (installed but not enabled)"
+echo "  ✅ grid-bot-sol.service (enabled)"
+echo "  ✅ health-check-email.timer (enabled - runs daily at 8 AM UTC)"
 echo ""
 echo "To start the BTC and ETH monitors now, run:"
 echo "  sudo systemctl start grid-bot-btc.service"
@@ -62,7 +70,9 @@ echo "To view logs:"
 echo "  tail -f /root/binance-trading-bot-v3/logs/live-btc-bot.log"
 echo "  tail -f /root/binance-trading-bot-v3/logs/live-eth-bot.log"
 echo ""
-echo "To enable SOL bot later (when you have funds):"
-echo "  sudo systemctl enable grid-bot-sol.service"
-echo "  sudo systemctl start grid-bot-sol.service"
+echo "To manually send a health check email now:"
+echo "  node health-check-email.mjs"
+echo ""
+echo "To check when the next health check email will be sent:"
+echo "  systemctl list-timers health-check-email.timer"
 echo ""
