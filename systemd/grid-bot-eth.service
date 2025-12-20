@@ -1,24 +1,17 @@
 [Unit]
-Description=Grid Trading Bot - ETH/USD Monitor
+Description=Grid Trading Bot - ETH Monitor
 After=network.target
-Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/root/binance-trading-bot-v3
-ExecStart=/usr/bin/node /root/binance-trading-bot-v3/grid-bot-cli.mjs monitor --name live-eth-bot
+ExecStart=/usr/bin/node /root/binance-trading-bot-v3/grid-bot-cli-v5.mjs monitor --name live-eth-bot
 Restart=always
-RestartSec=30
-StandardOutput=journal
-StandardError=journal
-
-# Environment variables
-Environment="NODE_ENV=production"
-
-# Restart policy
-StartLimitInterval=300
-StartLimitBurst=5
+RestartSec=10
+StandardOutput=append:/root/binance-trading-bot-v3/logs/live-eth-bot.log
+StandardError=append:/root/binance-trading-bot-v3/logs/live-eth-bot.log
+Environment=NODE_ENV=production
 
 [Install]
 WantedBy=multi-user.target
