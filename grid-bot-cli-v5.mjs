@@ -27,6 +27,7 @@ import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getDatabase, closeDatabase } from './database.mjs';
 import { WebSocketPriceFeed, createWebSocketExchange } from './websocket-feed.mjs';
+import { retryWithBackoff, errorLogger, apiCircuitBreaker, ErrorSeverity } from './error-handler.mjs';
 
 // Load environment
 dotenv.config({ path: '.env.production' });
@@ -35,7 +36,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Version
-const VERSION = '5.0.0-WEBSOCKET-SQLITE';
+const VERSION = '5.1.0-ERROR-HANDLING';
 
 // Risk management configuration
 const RISK_CONFIG = {
@@ -95,7 +96,10 @@ function initExchange() {
 // Calculate ATR (Average True Range) for volatility
 async function calculateATR(exchange, symbol, period = 14) {
   try {
-    const ohlcv = await exchange.fetchOHLCV(symbol, '1h', undefined, period + 1);
+    const ohlcv = await retryWithBackoff(
+      () => exchange.fetchOHLCV(symbol, '1h', undefined, period + 1),
+      { maxAttempts: 3, context: 'Fetch OHLCV data' }
+    );
     
     let atrSum = 0;
     for (let i = 1; i < ohlcv.length; i++) {
@@ -189,12 +193,13 @@ function calculatePositionSize(baseSize, winRate, avgWin, avgLoss) {
   return baseSize * adjustedKelly;
 }
 
-// Place grid orders
+// Place grid orders with retry logic
 async function placeGridOrders(bot, gridLevels, exchange, testMode) {
   // Cancel existing orders first
   db.cancelAllOrders(bot.name, 'grid_restart');
   
   const placedOrders = [];
+  const failedOrders = [];
   
   for (const level of gridLevels) {
     try {
@@ -213,12 +218,23 @@ async function placeGridOrders(bot, gridLevels, exchange, testMode) {
         });
         placedOrders.push(order);
       } else {
-        // Live trading - place actual order
-        const order = await exchange.createLimitOrder(
-          bot.symbol,
-          level.side,
-          amount,
-          level.price
+        // Live trading - place actual order with retry logic
+        const order = await retryWithBackoff(
+          () => apiCircuitBreaker.execute(() => 
+            exchange.createLimitOrder(bot.symbol, level.side, amount, level.price)
+          ),
+          {
+            maxAttempts: 3,
+            initialDelay: 1000,
+            context: `Place ${level.side} order at $${level.price}`,
+            shouldRetry: (error, classification) => {
+              // Don't retry insufficient funds errors
+              if (error.message?.toLowerCase().includes('insufficient')) {
+                return false;
+              }
+              return classification.retryable;
+            }
+          }
         );
         
         db.createOrder({
@@ -232,8 +248,15 @@ async function placeGridOrders(bot, gridLevels, exchange, testMode) {
         placedOrders.push(order);
       }
     } catch (error) {
-      console.error(`❌ Failed to place ${level.side} order at $${level.price}:`, error.message);
+      // Log error with classification
+      errorLogger.log(error, { botName: bot.name, operation: 'placeOrder', level });
+      failedOrders.push({ level, error: error.message });
     }
+  }
+  
+  // Report failed orders
+  if (failedOrders.length > 0) {
+    console.warn(`⚠️  ${failedOrders.length} order(s) failed to place`);
   }
   
   return placedOrders;
@@ -323,7 +346,10 @@ async function createBot(args) {
   try {
     console.log(`📊 Fetching current market data for ${symbol}...\n`);
     
-    const ticker = await exchange.fetchTicker(symbol);
+    const ticker = await retryWithBackoff(
+      () => exchange.fetchTicker(symbol),
+      { maxAttempts: 3, context: 'Fetch ticker data' }
+    );
     const currentPrice = ticker.last;
     const atr = await calculateATR(exchange, symbol);
     const adjustedGridCount = getAdaptiveGridCount(grids, atr);
@@ -383,7 +409,10 @@ async function startBot(args) {
   try {
     console.log(`🚀 Starting bot "${name}"...\n`);
     
-    const ticker = await exchange.fetchTicker(bot.symbol);
+    const ticker = await retryWithBackoff(
+      () => exchange.fetchTicker(bot.symbol),
+      { maxAttempts: 3, context: 'Fetch ticker data' }
+    );
     const currentPrice = ticker.last;
     const atr = await calculateATR(exchange, bot.symbol);
     
@@ -443,13 +472,16 @@ async function stopBot(args) {
     console.log(`✅ Cancelled ${cancelledCount.changes} orders in database`);
     
     if (!testMode) {
-      // Also cancel on exchange for live trading
+      // Also cancel on exchange for live trading with retry
       const activeOrders = db.getActiveOrders(name);
       for (const order of activeOrders) {
         try {
-          await exchange.cancelOrder(order.id, bot.symbol);
+          await retryWithBackoff(
+            () => exchange.cancelOrder(order.id, bot.symbol),
+            { maxAttempts: 3, context: `Cancel order ${order.id}` }
+          );
         } catch (error) {
-          console.error(`Failed to cancel order ${order.id}:`, error.message);
+          errorLogger.log(error, { botName: name, operation: 'cancelOrder', orderId: order.id });
         }
       }
     }
@@ -651,11 +683,21 @@ async function monitorBot(args) {
             });
           } else {
             try {
-              const order = await exchange.createLimitOrder(
-                bot.symbol,
-                oppositeSide,
-                filledOrder.amount,
-                newPrice
+              const order = await retryWithBackoff(
+                () => apiCircuitBreaker.execute(() => 
+                  exchange.createLimitOrder(bot.symbol, oppositeSide, filledOrder.amount, newPrice)
+                ),
+                {
+                  maxAttempts: 3,
+                  initialDelay: 1000,
+                  context: `Place ${oppositeSide} replacement order at $${newPrice.toFixed(2)}`,
+                  shouldRetry: (error, classification) => {
+                    if (error.message?.toLowerCase().includes('insufficient')) {
+                      return false;
+                    }
+                    return classification.retryable;
+                  }
+                }
               );
               db.createOrder({
                 id: order.id,
@@ -666,7 +708,7 @@ async function monitorBot(args) {
                 amount: order.amount,
               });
             } catch (error) {
-              console.error(`❌ Failed to place replacement order:`, error.message);
+              errorLogger.log(error, { botName, operation: 'placeReplacementOrder', side: oppositeSide, price: newPrice });
             }
           }
           
