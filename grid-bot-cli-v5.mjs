@@ -602,7 +602,7 @@ async function monitorBot(args) {
     symbol: bot.symbol,
     healthCheckInterval: 30000,
     staleDataThreshold: 60000,
-    fallbackInterval: 5000,
+    fallbackInterval: 10000,
     
     onPrice: async (priceData) => {
       const currentPrice = priceData.price;
