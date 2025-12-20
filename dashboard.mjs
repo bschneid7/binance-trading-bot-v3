@@ -2,13 +2,14 @@
 
 /**
  * Grid Trading Bot - Real-Time Performance Dashboard
+ * Version: 2.0.0
  * 
  * Provides a live terminal-based dashboard showing:
- * - Real-time P&L tracking
+ * - Real-time P&L tracking from Binance.US account
+ * - Actual account balances and positions
  * - Order status and fill rates
- * - Performance metrics (Sharpe ratio, win rate, profit factor)
+ * - Performance metrics
  * - Grid visualization
- * - Historical trade analysis
  */
 
 import ccxt from 'ccxt';
@@ -44,6 +45,9 @@ function clearScreen() {
 
 // Format currency
 function formatCurrency(value, decimals = 2) {
+  if (value === null || value === undefined || isNaN(value)) {
+    return `${colors.dim}$0.00${colors.reset}`;
+  }
   const formatted = Math.abs(value).toFixed(decimals);
   if (value >= 0) {
     return `${colors.green}$${formatted}${colors.reset}`;
@@ -53,19 +57,14 @@ function formatCurrency(value, decimals = 2) {
 
 // Format percentage
 function formatPercent(value, decimals = 2) {
+  if (value === null || value === undefined || isNaN(value)) {
+    return `${colors.dim}0.00%${colors.reset}`;
+  }
   const formatted = Math.abs(value).toFixed(decimals);
   if (value >= 0) {
     return `${colors.green}+${formatted}%${colors.reset}`;
   }
   return `${colors.red}-${formatted}%${colors.reset}`;
-}
-
-// Create a progress bar
-function progressBar(value, max, width = 20, filled = '█', empty = '░') {
-  const percent = Math.min(Math.max(value / max, 0), 1);
-  const filledCount = Math.round(percent * width);
-  const emptyCount = width - filledCount;
-  return filled.repeat(filledCount) + empty.repeat(emptyCount);
 }
 
 // Initialize exchange
@@ -89,69 +88,127 @@ function initExchange() {
   });
 }
 
-// Calculate real-time P&L for a bot
-async function calculateRealTimePnL(bot, exchange, currentPrice) {
-  const trades = db.getBotTrades(bot.name);
+/**
+ * Fetch real account balances from Binance.US
+ */
+async function fetchAccountBalances(exchange) {
+  try {
+    const balance = await exchange.fetchBalance();
+    return balance;
+  } catch (error) {
+    console.error(`Error fetching balance: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch recent trade history from Binance.US for a symbol
+ */
+async function fetchTradeHistory(exchange, symbol, since = null) {
+  try {
+    // Fetch trades from the last 30 days if no since provided
+    const sinceTimestamp = since || (Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const trades = await exchange.fetchMyTrades(symbol, sinceTimestamp, 500);
+    return trades;
+  } catch (error) {
+    console.error(`Error fetching trades for ${symbol}: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Calculate P&L from actual Binance trade history
+ */
+async function calculateRealPnL(exchange, symbol, currentPrice) {
+  const trades = await fetchTradeHistory(exchange, symbol);
   
-  let realizedPnL = 0;
+  if (trades.length === 0) {
+    return {
+      realizedPnL: 0,
+      unrealizedPnL: 0,
+      totalPnL: 0,
+      totalBought: 0,
+      totalSold: 0,
+      avgBuyPrice: 0,
+      avgSellPrice: 0,
+      netPosition: 0,
+      totalTrades: 0,
+      fees: 0,
+    };
+  }
+  
   let totalBuyCost = 0;
   let totalBuyAmount = 0;
   let totalSellRevenue = 0;
   let totalSellAmount = 0;
+  let totalFees = 0;
   
   for (const trade of trades) {
+    const cost = trade.cost || (trade.price * trade.amount);
+    const fee = trade.fee ? trade.fee.cost : 0;
+    totalFees += fee;
+    
     if (trade.side === 'buy') {
-      totalBuyCost += trade.value;
+      totalBuyCost += cost;
       totalBuyAmount += trade.amount;
     } else {
-      totalSellRevenue += trade.value;
+      totalSellRevenue += cost;
       totalSellAmount += trade.amount;
     }
   }
   
-  // Calculate realized P&L from completed round trips
+  const avgBuyPrice = totalBuyAmount > 0 ? totalBuyCost / totalBuyAmount : 0;
+  const avgSellPrice = totalSellAmount > 0 ? totalSellRevenue / totalSellAmount : 0;
+  
+  // Realized P&L: profit from completed round trips (matched buys and sells)
   const completedAmount = Math.min(totalBuyAmount, totalSellAmount);
-  if (completedAmount > 0 && totalBuyAmount > 0) {
-    const avgBuyPrice = totalBuyCost / totalBuyAmount;
-    const avgSellPrice = totalSellRevenue / totalSellAmount;
+  let realizedPnL = 0;
+  if (completedAmount > 0 && avgBuyPrice > 0) {
     realizedPnL = (avgSellPrice - avgBuyPrice) * completedAmount;
   }
   
-  // Calculate unrealized P&L from open positions
-  const openPosition = totalBuyAmount - totalSellAmount;
-  const unrealizedPnL = openPosition > 0 
-    ? (currentPrice - (totalBuyCost / totalBuyAmount)) * openPosition 
-    : 0;
+  // Net position (what we still hold)
+  const netPosition = totalBuyAmount - totalSellAmount;
+  
+  // Unrealized P&L: current value of holdings vs what we paid
+  let unrealizedPnL = 0;
+  if (netPosition > 0 && avgBuyPrice > 0) {
+    unrealizedPnL = (currentPrice - avgBuyPrice) * netPosition;
+  }
+  
+  // Subtract fees from total P&L
+  const totalPnL = realizedPnL + unrealizedPnL - totalFees;
   
   return {
     realizedPnL,
     unrealizedPnL,
-    totalPnL: realizedPnL + unrealizedPnL,
-    openPosition,
+    totalPnL,
+    totalBought: totalBuyAmount,
+    totalSold: totalSellAmount,
+    avgBuyPrice,
+    avgSellPrice,
+    netPosition,
     totalTrades: trades.length,
+    fees: totalFees,
   };
 }
 
-// Get order distribution for grid visualization
-function getOrderDistribution(bot, orders, currentPrice) {
-  const gridSpacing = (bot.upper_price - bot.lower_price) / bot.adjusted_grid_count;
-  const levels = [];
+/**
+ * Get actual holdings from account balance
+ */
+function getHoldings(balance, symbol) {
+  // Extract base currency from symbol (e.g., BTC from BTC/USD)
+  const baseCurrency = symbol.split('/')[0];
   
-  for (let i = 0; i <= bot.adjusted_grid_count; i++) {
-    const price = bot.lower_price + (i * gridSpacing);
-    const ordersAtLevel = orders.filter(o => 
-      Math.abs(o.price - price) < gridSpacing * 0.1
-    );
-    
-    levels.push({
-      price,
-      buyOrders: ordersAtLevel.filter(o => o.side === 'buy').length,
-      sellOrders: ordersAtLevel.filter(o => o.side === 'sell').length,
-      isCurrent: currentPrice >= price && currentPrice < price + gridSpacing,
-    });
+  if (balance && balance[baseCurrency]) {
+    return {
+      free: balance[baseCurrency].free || 0,
+      used: balance[baseCurrency].used || 0,
+      total: balance[baseCurrency].total || 0,
+    };
   }
   
-  return levels;
+  return { free: 0, used: 0, total: 0 };
 }
 
 // Render the dashboard header
@@ -165,9 +222,10 @@ function renderHeader() {
 }
 
 // Render bot summary card
-function renderBotCard(bot, pnl, metrics, currentPrice, orders) {
+function renderBotCard(bot, pnl, holdings, currentPrice, orders, usdBalance) {
   const statusColor = bot.status === 'running' ? colors.green : colors.red;
   const statusIcon = bot.status === 'running' ? '●' : '○';
+  const baseCurrency = bot.symbol.split('/')[0];
   
   console.log(`${colors.bright}┌─────────────────────────────────────────────────────────────────────────────────┐${colors.reset}`);
   console.log(`${colors.bright}│${colors.reset} ${statusColor}${statusIcon}${colors.reset} ${colors.bright}${bot.name.toUpperCase()}${colors.reset} (${bot.symbol})                                                          ${colors.bright}│${colors.reset}`);
@@ -175,80 +233,84 @@ function renderBotCard(bot, pnl, metrics, currentPrice, orders) {
   
   // Price and Range
   const pricePosition = ((currentPrice - bot.lower_price) / (bot.upper_price - bot.lower_price) * 100).toFixed(1);
-  console.log(`${colors.bright}│${colors.reset} Current Price: ${colors.bright}$${currentPrice.toFixed(2)}${colors.reset}  │  Grid Range: $${bot.lower_price.toFixed(0)} - $${bot.upper_price.toFixed(0)}  │  Position: ${pricePosition}%  ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset} Current Price: ${colors.bright}$${currentPrice.toFixed(2)}${colors.reset}  │  Range: $${bot.lower_price.toFixed(0)}-$${bot.upper_price.toFixed(0)}  │  Position: ${pricePosition}%       ${colors.bright}│${colors.reset}`);
   
-  // P&L Section
+  // Holdings Section
   console.log(`${colors.bright}├─────────────────────────────────────────────────────────────────────────────────┤${colors.reset}`);
-  console.log(`${colors.bright}│${colors.reset} ${colors.bright}P&L Summary:${colors.reset}                                                                      ${colors.bright}│${colors.reset}`);
-  console.log(`${colors.bright}│${colors.reset}   Realized P&L:   ${formatCurrency(pnl.realizedPnL).padEnd(25)}  Unrealized P&L: ${formatCurrency(pnl.unrealizedPnL).padEnd(20)} ${colors.bright}│${colors.reset}`);
-  console.log(`${colors.bright}│${colors.reset}   ${colors.bright}Total P&L:${colors.reset}      ${formatCurrency(pnl.totalPnL).padEnd(25)}  Open Position:  ${pnl.openPosition.toFixed(6).padEnd(20)} ${colors.bright}│${colors.reset}`);
+  const holdingsValue = holdings.total * currentPrice;
+  console.log(`${colors.bright}│${colors.reset} ${colors.bright}Holdings:${colors.reset} ${holdings.total.toFixed(6)} ${baseCurrency} (${formatCurrency(holdingsValue)})                                    ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset}   Available: ${holdings.free.toFixed(6)}  │  In Orders: ${holdings.used.toFixed(6)}                              ${colors.bright}│${colors.reset}`);
+  
+  // P&L Section (from actual trades)
+  console.log(`${colors.bright}├─────────────────────────────────────────────────────────────────────────────────┤${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset} ${colors.bright}P&L (Last 30 Days):${colors.reset}                                                           ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset}   Realized:    ${formatCurrency(pnl.realizedPnL).padEnd(20)}  Unrealized:   ${formatCurrency(pnl.unrealizedPnL).padEnd(15)}    ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset}   ${colors.bright}Total P&L:${colors.reset}   ${formatCurrency(pnl.totalPnL).padEnd(20)}  Fees Paid:    ${formatCurrency(pnl.fees).padEnd(15)}    ${colors.bright}│${colors.reset}`);
+  
+  // Trade Stats
+  console.log(`${colors.bright}├─────────────────────────────────────────────────────────────────────────────────┤${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset} ${colors.bright}Trade Stats:${colors.reset}                                                                    ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset}   Total Trades: ${pnl.totalTrades.toString().padEnd(10)}  Avg Buy: $${pnl.avgBuyPrice.toFixed(2).padEnd(12)}  Avg Sell: $${pnl.avgSellPrice.toFixed(2).padEnd(10)} ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset}   Bought: ${pnl.totalBought.toFixed(6).padEnd(15)}  Sold: ${pnl.totalSold.toFixed(6).padEnd(15)}                    ${colors.bright}│${colors.reset}`);
   
   // Orders Section
   console.log(`${colors.bright}├─────────────────────────────────────────────────────────────────────────────────┤${colors.reset}`);
   const buyOrders = orders.filter(o => o.side === 'buy').length;
   const sellOrders = orders.filter(o => o.side === 'sell').length;
-  console.log(`${colors.bright}│${colors.reset} ${colors.bright}Orders:${colors.reset} ${colors.green}${buyOrders} BUY${colors.reset} │ ${colors.red}${sellOrders} SELL${colors.reset} │ Total: ${orders.length}                                       ${colors.bright}│${colors.reset}`);
+  const buyValue = orders.filter(o => o.side === 'buy').reduce((sum, o) => sum + (o.price * o.amount), 0);
+  const sellValue = orders.filter(o => o.side === 'sell').reduce((sum, o) => sum + (o.price * o.amount), 0);
+  console.log(`${colors.bright}│${colors.reset} ${colors.bright}Open Orders:${colors.reset} ${orders.length} total                                                        ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset}   ${colors.green}BUY:${colors.reset}  ${buyOrders} orders (${formatCurrency(buyValue)})                                            ${colors.bright}│${colors.reset}`);
+  console.log(`${colors.bright}│${colors.reset}   ${colors.red}SELL:${colors.reset} ${sellOrders} orders (${formatCurrency(sellValue)})                                            ${colors.bright}│${colors.reset}`);
   
-  // Metrics Section
+  // Grid Visualization (compact)
   console.log(`${colors.bright}├─────────────────────────────────────────────────────────────────────────────────┤${colors.reset}`);
-  console.log(`${colors.bright}│${colors.reset} ${colors.bright}Performance Metrics:${colors.reset}                                                              ${colors.bright}│${colors.reset}`);
-  console.log(`${colors.bright}│${colors.reset}   Win Rate: ${formatPercent(metrics.win_rate).padEnd(20)} Profit Factor: ${(metrics.profit_factor || 0).toFixed(2).padEnd(10)} Trades: ${pnl.totalTrades.toString().padEnd(8)} ${colors.bright}│${colors.reset}`);
-  console.log(`${colors.bright}│${colors.reset}   Sharpe:   ${(metrics.sharpe_ratio || 0).toFixed(2).padEnd(20)} Max Drawdown:  ${formatPercent(-(metrics.max_drawdown || 0)).padEnd(10)}                  ${colors.bright}│${colors.reset}`);
-  
-  // Grid Visualization
-  console.log(`${colors.bright}├─────────────────────────────────────────────────────────────────────────────────┤${colors.reset}`);
-  console.log(`${colors.bright}│${colors.reset} ${colors.bright}Grid Visualization:${colors.reset}                                                               ${colors.bright}│${colors.reset}`);
-  
-  const gridLevels = Math.min(10, bot.adjusted_grid_count);
-  const gridSpacing = (bot.upper_price - bot.lower_price) / gridLevels;
-  
-  for (let i = gridLevels; i >= 0; i--) {
-    const levelPrice = bot.lower_price + (i * gridSpacing);
-    const isCurrent = currentPrice >= levelPrice && currentPrice < levelPrice + gridSpacing;
-    const marker = isCurrent ? `${colors.yellow}◄ PRICE${colors.reset}` : '       ';
-    const levelOrders = orders.filter(o => Math.abs(o.price - levelPrice) < gridSpacing * 0.5);
-    const buyCount = levelOrders.filter(o => o.side === 'buy').length;
-    const sellCount = levelOrders.filter(o => o.side === 'sell').length;
-    
-    const buyBar = colors.green + '█'.repeat(Math.min(buyCount, 5)) + colors.reset;
-    const sellBar = colors.red + '█'.repeat(Math.min(sellCount, 5)) + colors.reset;
-    
-    console.log(`${colors.bright}│${colors.reset}   $${levelPrice.toFixed(0).padStart(6)} │ ${buyBar.padEnd(15)}${sellBar.padEnd(15)} ${marker}                       ${colors.bright}│${colors.reset}`);
-  }
+  console.log(`${colors.bright}│${colors.reset} ${colors.bright}Grid:${colors.reset} ${colors.green}${'█'.repeat(buyOrders > 10 ? 10 : buyOrders)}${colors.reset}${colors.dim}${'░'.repeat(10 - (buyOrders > 10 ? 10 : buyOrders))}${colors.reset} BUY  ${colors.yellow}◄ $${currentPrice.toFixed(0)} ►${colors.reset}  SELL ${colors.red}${'█'.repeat(sellOrders > 10 ? 10 : sellOrders)}${colors.reset}${colors.dim}${'░'.repeat(10 - (sellOrders > 10 ? 10 : sellOrders))}${colors.reset}  ${colors.bright}│${colors.reset}`);
   
   console.log(`${colors.bright}└─────────────────────────────────────────────────────────────────────────────────┘${colors.reset}`);
   console.log();
 }
 
 // Render portfolio summary
-function renderPortfolioSummary(botData) {
+function renderPortfolioSummary(botData, usdBalance) {
   let totalRealizedPnL = 0;
   let totalUnrealizedPnL = 0;
-  let totalCapital = 0;
+  let totalHoldingsValue = 0;
   let totalOrders = 0;
+  let totalFees = 0;
   
   for (const data of botData) {
-    totalRealizedPnL += data.pnl.realizedPnL;
-    totalUnrealizedPnL += data.pnl.unrealizedPnL;
-    totalCapital += data.bot.order_size * data.bot.adjusted_grid_count;
+    totalRealizedPnL += data.pnl.realizedPnL || 0;
+    totalUnrealizedPnL += data.pnl.unrealizedPnL || 0;
+    totalHoldingsValue += data.holdings.total * data.currentPrice;
     totalOrders += data.orders.length;
+    totalFees += data.pnl.fees || 0;
   }
   
-  const totalPnL = totalRealizedPnL + totalUnrealizedPnL;
-  const roi = totalCapital > 0 ? (totalPnL / totalCapital) * 100 : 0;
+  const totalPnL = totalRealizedPnL + totalUnrealizedPnL - totalFees;
+  const totalPortfolioValue = totalHoldingsValue + usdBalance;
   
   console.log(`${colors.bright}${colors.magenta}╔════════════════════════════════════════════════════════════════════════════════╗${colors.reset}`);
   console.log(`${colors.bright}${colors.magenta}║${colors.reset}                        ${colors.bright}PORTFOLIO SUMMARY${colors.reset}                                      ${colors.magenta}║${colors.reset}`);
   console.log(`${colors.bright}${colors.magenta}╠════════════════════════════════════════════════════════════════════════════════╣${colors.reset}`);
-  console.log(`${colors.bright}${colors.magenta}║${colors.reset}  Total Capital:    $${totalCapital.toFixed(2).padEnd(15)}  Total Orders:     ${totalOrders.toString().padEnd(15)}     ${colors.magenta}║${colors.reset}`);
-  console.log(`${colors.bright}${colors.magenta}║${colors.reset}  Realized P&L:     ${formatCurrency(totalRealizedPnL).padEnd(20)}  Unrealized P&L:   ${formatCurrency(totalUnrealizedPnL).padEnd(20)} ${colors.magenta}║${colors.reset}`);
-  console.log(`${colors.bright}${colors.magenta}║${colors.reset}  ${colors.bright}Total P&L:${colors.reset}        ${formatCurrency(totalPnL).padEnd(20)}  ${colors.bright}ROI:${colors.reset}              ${formatPercent(roi).padEnd(20)} ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}  ${colors.bright}Account Value:${colors.reset}                                                              ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}    USD Balance:     ${formatCurrency(usdBalance).padEnd(20)}                                   ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}    Crypto Holdings: ${formatCurrency(totalHoldingsValue).padEnd(20)}                                   ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}    ${colors.bright}Total Value:${colors.reset}     ${formatCurrency(totalPortfolioValue).padEnd(20)}                                   ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}╠════════════════════════════════════════════════════════════════════════════════╣${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}  ${colors.bright}P&L (Last 30 Days):${colors.reset}                                                         ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}    Realized P&L:    ${formatCurrency(totalRealizedPnL).padEnd(20)}                                   ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}    Unrealized P&L:  ${formatCurrency(totalUnrealizedPnL).padEnd(20)}                                   ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}    Fees Paid:       ${formatCurrency(totalFees).padEnd(20)}                                   ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}    ${colors.bright}Net P&L:${colors.reset}         ${formatCurrency(totalPnL).padEnd(20)}                                   ${colors.magenta}║${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}╠════════════════════════════════════════════════════════════════════════════════╣${colors.reset}`);
+  console.log(`${colors.bright}${colors.magenta}║${colors.reset}  Active Orders: ${totalOrders}                                                            ${colors.magenta}║${colors.reset}`);
   console.log(`${colors.bright}${colors.magenta}╚════════════════════════════════════════════════════════════════════════════════╝${colors.reset}`);
   console.log();
 }
 
 // Main dashboard loop
-async function runDashboard(refreshInterval = 10000) {
+async function runDashboard(refreshInterval = 30000) {
   const exchange = initExchange();
   const bots = db.getAllBots();
   
@@ -258,11 +320,16 @@ async function runDashboard(refreshInterval = 10000) {
   }
   
   console.log(`${colors.dim}Starting dashboard... Press Ctrl+C to exit.${colors.reset}\n`);
+  console.log(`${colors.dim}Fetching data from Binance.US (this may take a moment)...${colors.reset}\n`);
   
   async function refresh() {
     try {
       clearScreen();
       renderHeader();
+      
+      // Fetch account balance once
+      const balance = await fetchAccountBalances(exchange);
+      const usdBalance = balance ? (balance['USD']?.free || 0) : 0;
       
       const botData = [];
       
@@ -275,28 +342,28 @@ async function runDashboard(refreshInterval = 10000) {
           // Fetch open orders from exchange
           const exchangeOrders = await exchange.fetchOpenOrders(bot.symbol);
           
-          // Calculate P&L
-          const pnl = await calculateRealTimePnL(bot, exchange, currentPrice);
+          // Calculate P&L from actual trade history
+          const pnl = await calculateRealPnL(exchange, bot.symbol, currentPrice);
           
-          // Get metrics
-          const metrics = db.getMetrics(bot.name);
+          // Get actual holdings
+          const holdings = getHoldings(balance, bot.symbol);
           
           botData.push({
             bot,
             pnl,
-            metrics,
+            holdings,
             currentPrice,
             orders: exchangeOrders,
           });
           
-          renderBotCard(bot, pnl, metrics, currentPrice, exchangeOrders);
+          renderBotCard(bot, pnl, holdings, currentPrice, exchangeOrders, usdBalance);
         } catch (error) {
           console.log(`${colors.red}Error fetching data for ${bot.name}: ${error.message}${colors.reset}\n`);
         }
       }
       
       if (botData.length > 0) {
-        renderPortfolioSummary(botData);
+        renderPortfolioSummary(botData, usdBalance);
       }
       
       console.log(`${colors.dim}Refreshing every ${refreshInterval / 1000} seconds... Press Ctrl+C to exit.${colors.reset}`);
@@ -331,7 +398,13 @@ async function showSnapshot() {
     return;
   }
   
+  console.log(`${colors.dim}Fetching data from Binance.US...${colors.reset}\n`);
+  
   renderHeader();
+  
+  // Fetch account balance once
+  const balance = await fetchAccountBalances(exchange);
+  const usdBalance = balance ? (balance['USD']?.free || 0) : 0;
   
   const botData = [];
   
@@ -340,18 +413,18 @@ async function showSnapshot() {
       const ticker = await exchange.fetchTicker(bot.symbol);
       const currentPrice = ticker.last;
       const exchangeOrders = await exchange.fetchOpenOrders(bot.symbol);
-      const pnl = await calculateRealTimePnL(bot, exchange, currentPrice);
-      const metrics = db.getMetrics(bot.name);
+      const pnl = await calculateRealPnL(exchange, bot.symbol, currentPrice);
+      const holdings = getHoldings(balance, bot.symbol);
       
-      botData.push({ bot, pnl, metrics, currentPrice, orders: exchangeOrders });
-      renderBotCard(bot, pnl, metrics, currentPrice, exchangeOrders);
+      botData.push({ bot, pnl, holdings, currentPrice, orders: exchangeOrders });
+      renderBotCard(bot, pnl, holdings, currentPrice, exchangeOrders, usdBalance);
     } catch (error) {
       console.log(`${colors.red}Error fetching data for ${bot.name}: ${error.message}${colors.reset}\n`);
     }
   }
   
   if (botData.length > 0) {
-    renderPortfolioSummary(botData);
+    renderPortfolioSummary(botData, usdBalance);
   }
   
   closeDatabase();
@@ -361,7 +434,7 @@ async function showSnapshot() {
 const args = process.argv.slice(2);
 const isLive = args.includes('--live') || args.includes('-l');
 const intervalArg = args.find(a => a.startsWith('--interval='));
-const interval = intervalArg ? parseInt(intervalArg.split('=')[1]) * 1000 : 10000;
+const interval = intervalArg ? parseInt(intervalArg.split('=')[1]) * 1000 : 30000;
 
 if (isLive) {
   runDashboard(interval);
