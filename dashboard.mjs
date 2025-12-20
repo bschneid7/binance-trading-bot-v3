@@ -91,7 +91,7 @@ function initExchange() {
 
 // Calculate real-time P&L for a bot
 async function calculateRealTimePnL(bot, exchange, currentPrice) {
-  const trades = db.getTrades(bot.name);
+  const trades = db.getBotTrades(bot.name);
   
   let realizedPnL = 0;
   let totalBuyCost = 0;
