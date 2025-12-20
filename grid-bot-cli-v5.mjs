@@ -27,7 +27,8 @@ import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getDatabase, closeDatabase } from './database.mjs';
 import { WebSocketPriceFeed, createWebSocketExchange } from './websocket-feed.mjs';
-import { retryWithBackoff, errorLogger, apiCircuitBreaker, ErrorSeverity } from './error-handler.mjs';
+import { retryWithBackoff, classifyError, ErrorLogger, CircuitBreaker } from './error-handler.mjs';
+import { TrailingStopManager } from './trailing-stop.mjs';
 
 // Load environment
 dotenv.config({ path: '.env.production' });
@@ -36,7 +37,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Version
-const VERSION = '5.1.0-ERROR-HANDLING';
+const VERSION = '5.2.0-TRAILING-STOP';
+
+// Initialize trailing stop manager
+const trailingStopManager = new TrailingStopManager();
 
 // Risk management configuration
 const RISK_CONFIG = {
@@ -438,6 +442,15 @@ async function startBot(args) {
     // Update bot status
     db.updateBotStatus(name, 'running');
     
+    // Initialize trailing stop with current price as entry
+    trailingStopManager.setEntryPrice(name, currentPrice);
+    trailingStopManager.configure(name, {
+      strategy: 'percentage',
+      trailingPercent: RISK_CONFIG.TRAILING_STOP_PERCENT,
+      activationPercent: RISK_CONFIG.MIN_PROFIT_FOR_TRAILING,
+    });
+    console.log(`📈 Trailing stop configured: ${(RISK_CONFIG.TRAILING_STOP_PERCENT * 100).toFixed(1)}% trail, activates at ${(RISK_CONFIG.MIN_PROFIT_FOR_TRAILING * 100).toFixed(1)}% profit`);
+    
     console.log(`📝 Mode: ${testMode ? 'PAPER TRADING' : '🔴 LIVE TRADING'}`);
     console.log(`\n✅ Bot "${name}" started successfully!`);
     console.log(`Run 'node grid-bot-cli-v5.mjs monitor --name ${name}' to monitor`);
@@ -629,6 +642,28 @@ async function monitorBot(args) {
   let totalFills = 0;
   let totalReplacements = 0;
 
+  // Initialize trailing stop if not already set (for monitor restarts)
+  // Get current price to set as entry if needed
+  try {
+    const ticker = await exchange.fetchTicker(bot.symbol);
+    const entryPrice = ticker.last;
+    
+    // Only set entry price if not already tracking
+    const currentState = trailingStopManager.getState(botName);
+    if (!currentState.entryPrice) {
+      trailingStopManager.setEntryPrice(botName, entryPrice);
+      trailingStopManager.configure(botName, {
+        strategy: 'percentage',
+        trailingPercent: RISK_CONFIG.TRAILING_STOP_PERCENT,
+        activationPercent: RISK_CONFIG.MIN_PROFIT_FOR_TRAILING,
+      });
+      console.log(`📈 Trailing stop initialized at entry $${entryPrice.toFixed(2)}`);
+      console.log(`   Trail: ${(RISK_CONFIG.TRAILING_STOP_PERCENT * 100).toFixed(1)}% | Activation: ${(RISK_CONFIG.MIN_PROFIT_FOR_TRAILING * 100).toFixed(1)}% profit`);
+    }
+  } catch (e) {
+    console.log(`⚠️  Could not initialize trailing stop: ${e.message}`);
+  }
+
   // Create WebSocket price feed
   const priceFeed = new WebSocketPriceFeed(exchange, {
     symbol: bot.symbol,
@@ -743,7 +778,51 @@ async function monitorBot(args) {
         console.log(`   🎯 Fresh grid active\n`);
       }
       
-      // Check stop-loss
+      // Check trailing stop
+      const trailingResult = trailingStopManager.update(botName, currentPrice);
+      
+      if (trailingResult.isActive && trailingResult.stopPrice) {
+        console.log(`📈 Trailing Stop: Active | HWM: $${trailingResult.highWaterMark?.toFixed(2)} | Stop: $${trailingResult.stopPrice.toFixed(2)} | Profit: ${(trailingResult.profitPercent * 100).toFixed(2)}%`);
+      }
+      
+      if (trailingResult.triggered) {
+        console.log(`\n🎯 TRAILING STOP TRIGGERED!`);
+        console.log(`   ${trailingResult.reason}`);
+        console.log(`   Closing positions and stopping bot...`);
+        
+        // Cancel all orders
+        const activeOrders = db.getActiveOrders(botName);
+        for (const order of activeOrders) {
+          if (!testMode) {
+            try {
+              await retryWithBackoff(
+                () => exchange.cancelOrder(order.id, bot.symbol),
+                { maxAttempts: 3, initialDelay: 1000, context: `Cancel order ${order.id}` }
+              );
+            } catch (e) {
+              console.log(`   ⚠️  Could not cancel order ${order.id}: ${e.message}`);
+            }
+          }
+          db.fillOrder(order.id, 'trailing_stop');
+        }
+        
+        db.updateBotStatus(botName, 'stopped');
+        db.recordTrade({
+          bot_name: botName,
+          symbol: bot.symbol,
+          side: 'close',
+          price: currentPrice,
+          amount: 0,
+          value: trailingResult.profit || 0,
+          type: 'trailing_stop_exit'
+        });
+        
+        await priceFeed.stop();
+        console.log(`   ✅ Bot stopped with trailing stop profit locked`);
+        process.exit(0);
+      }
+      
+      // Check stop-loss (hard stop)
       const metrics = db.getMetrics(botName);
       const stopLoss = checkStopLoss(bot, currentPrice, metrics);
       
