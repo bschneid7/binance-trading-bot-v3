@@ -294,7 +294,7 @@ async function syncTrades(exchange, bot, results, days = 30) {
         amount: trade.amount,
         value: trade.cost || (trade.price * trade.amount),
         fee: trade.fee ? trade.fee.cost : 0,
-        order_id: trade.order,
+        order_id: null,  // Don't link to orders table - historical orders may not exist
         type: 'synced',
       });
       imported++;
