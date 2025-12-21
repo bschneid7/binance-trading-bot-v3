@@ -2,7 +2,7 @@
 
 /**
  * Grid Trading Bot - Alert Monitor
- * Version: 1.0.0
+ * Version: 1.1.0
  * 
  * Monitors bot health and sends email alerts for critical issues:
  * 1. Bot process not running
@@ -10,6 +10,8 @@
  * 3. Large drawdown (equity drop > 5% in 24h)
  * 4. Order sync issues (mismatch between DB and exchange)
  * 5. Daily summary report
+ * 
+ * Uses Gmail SMTP via nodemailer for sending emails.
  * 
  * Usage:
  *   node alert-monitor.mjs              # Check and alert if issues
@@ -19,8 +21,9 @@
 
 import ccxt from 'ccxt';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 import { execSync } from 'child_process';
-import { existsSync, statSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { existsSync, statSync, readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getDatabase, closeDatabase } from './database.mjs';
@@ -33,13 +36,31 @@ dotenv.config({ path: join(__dirname, '.env.production') });
 
 // Configuration
 const CONFIG = {
-  alertEmail: 'bschneid7@gmail.com',
+  alertEmail: process.env.ALERT_EMAIL || 'bschneid7@gmail.com',
+  gmailUser: process.env.GMAIL_USER || 'bschneid7@gmail.com',
+  gmailAppPassword: process.env.GMAIL_APP_PASSWORD,
   staleThresholdMinutes: 10,
   drawdownAlertThreshold: 0.05, // 5%
   orderMismatchThreshold: 5, // Alert if > 5 orders mismatch
   alertCooldownMinutes: 60, // Don't send same alert within 60 minutes
   alertStateFile: join(__dirname, 'data', 'alert-state.json')
 };
+
+// Validate configuration
+if (!CONFIG.gmailAppPassword) {
+  console.error('❌ GMAIL_APP_PASSWORD not set in .env.production');
+  console.error('   Add: GMAIL_APP_PASSWORD=your_app_password');
+  process.exit(1);
+}
+
+// Create email transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: CONFIG.gmailUser,
+    pass: CONFIG.gmailAppPassword
+  }
+});
 
 // Alert state management
 function loadAlertState() {
@@ -76,15 +97,6 @@ function markAlertSent(alertKey, state) {
 
 // Check if monitor process is running
 function checkProcess(botName) {
-  // Map bot names to service names
-  const serviceMap = {
-    'live-btc-bot': 'enhanced-btc-bot',
-    'live-eth-bot': 'enhanced-eth-bot',
-    'live-sol-bot': 'enhanced-sol-bot'
-  };
-  
-  const serviceName = serviceMap[botName] || botName;
-  
   try {
     const result = execSync(`ps aux | grep "enhanced-monitor.mjs ${botName}" | grep -v grep`, { encoding: 'utf8' });
     if (result.trim()) {
@@ -129,7 +141,6 @@ async function checkOrderSync(botName, exchange, db) {
     const bot = db.getBot(botName);
     if (!bot) return { synced: true };
     
-    const symbol = bot.symbol.replace('/', '');
     const exchangeOrders = await exchange.fetchOpenOrders(bot.symbol);
     const dbOrders = db.getActiveOrders(botName);
     
@@ -200,22 +211,18 @@ function calculate24hPnL(db, botName) {
   }
 }
 
-// Send email via MCP
+// Send email via Gmail SMTP
 async function sendEmail(subject, content) {
-  const emailData = {
-    messages: [{
-      subject: subject,
-      to: [CONFIG.alertEmail],
-      content: content
-    }]
+  const mailOptions = {
+    from: `Grid Trading Bot <${CONFIG.gmailUser}>`,
+    to: CONFIG.alertEmail,
+    subject: subject,
+    text: content
   };
   
   try {
-    const result = execSync(
-      `manus-mcp-cli tool call gmail_send_messages --server gmail --input '${JSON.stringify(emailData)}'`,
-      { encoding: 'utf8', timeout: 30000 }
-    );
-    console.log('✅ Email sent successfully');
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent:', info.messageId);
     return true;
   } catch (e) {
     console.error('❌ Failed to send email:', e.message);
@@ -398,7 +405,7 @@ async function runAlertCheck(options = {}) {
   if (options.test) {
     const testContent = `This is a test email from your Grid Trading Bot alert system.\n\n`;
     const testSubject = `✅ Grid Bot Alert System - Test Email`;
-    await sendEmail(testSubject, testContent + `Time: ${new Date().toISOString()}\n\nIf you received this, your alert system is working correctly!`);
+    await sendEmail(testSubject, testContent + `Time: ${new Date().toISOString()}\n\nIf you received this, your alert system is working correctly!\n\nAlert Types Configured:\n- Bot process not running (CRITICAL)\n- Stale log activity > 10 minutes (WARNING)\n- Order sync mismatch > 5 orders (WARNING)\n- Equity drawdown > 5% in 24h (CRITICAL)\n\n-- Your Grid Trading Bot`);
     console.log('📧 Test email sent');
   }
   
@@ -414,7 +421,7 @@ const options = {
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-Grid Trading Bot - Alert Monitor
+Grid Trading Bot - Alert Monitor (Gmail SMTP)
 
 Usage:
   node alert-monitor.mjs              Check and alert if issues
@@ -426,6 +433,11 @@ Alert Types:
   - Stale log activity > 10 minutes (WARNING)
   - Order sync mismatch > 5 orders (WARNING)
   - Equity drawdown > 5% in 24h (CRITICAL)
+
+Environment Variables Required:
+  GMAIL_USER          Gmail address (default: bschneid7@gmail.com)
+  GMAIL_APP_PASSWORD  Gmail app password
+  ALERT_EMAIL         Recipient email (default: bschneid7@gmail.com)
 
 Emails sent to: ${CONFIG.alertEmail}
   `);
