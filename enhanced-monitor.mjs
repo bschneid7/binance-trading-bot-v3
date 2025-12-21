@@ -18,10 +18,12 @@ import { WebSocketPriceFeed } from './websocket-feed.mjs';
 import { BinanceWebSocket } from './binance-websocket.mjs';
 import { retryWithBackoff, CircuitBreaker, ErrorLogger } from './error-handler.mjs';
 import { TrailingStopManager } from './trailing-stop.mjs';
+import { VolatilityGridManager } from './volatility-grid.mjs';
+import { TrendFilter, TREND, TREND_NAMES } from './trend-filter.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.0.0-ENHANCED';
+const VERSION = '1.1.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -54,6 +56,24 @@ const SYNC_CONFIG = {
   POST_FILL_SYNC_DELAY: 5000,  // 5 seconds
 };
 
+// Volatility-based grid configuration
+const VOLATILITY_CONFIG = {
+  ENABLED: true,
+  ATR_PERIOD: 14,
+  ATR_TIMEFRAME: '1h',
+  MIN_MULTIPLIER: 0.5,
+  MAX_MULTIPLIER: 2.0,
+  UPDATE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
+};
+
+// Trend filter configuration
+const TREND_CONFIG = {
+  ENABLED: true,
+  TIMEFRAMES: ['4h', '1d'],
+  FILTER_MODE: 'soft',  // 'soft' = warn only, 'hard' = block orders
+  UPDATE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -65,6 +85,8 @@ export class EnhancedMonitor {
       autoRebalance: REBALANCE_CONFIG.AUTO_REBALANCE,
       syncInterval: SYNC_CONFIG.SYNC_INTERVAL,
       useNativeWebSocket: true,
+      useVolatilityGrid: VOLATILITY_CONFIG.ENABLED,
+      useTrendFilter: TREND_CONFIG.ENABLED,
       ...options,
     };
     
@@ -107,6 +129,25 @@ export class EnhancedMonitor {
     
     // Trailing stop
     this.trailingStopManager = new TrailingStopManager();
+    
+    // Volatility grid manager
+    this.volatilityManager = new VolatilityGridManager({
+      atrPeriod: VOLATILITY_CONFIG.ATR_PERIOD,
+      atrTimeframe: VOLATILITY_CONFIG.ATR_TIMEFRAME,
+      minGridMultiplier: VOLATILITY_CONFIG.MIN_MULTIPLIER,
+      maxGridMultiplier: VOLATILITY_CONFIG.MAX_MULTIPLIER,
+    });
+    
+    // Trend filter
+    this.trendFilter = new TrendFilter({
+      timeframes: TREND_CONFIG.TIMEFRAMES,
+      filterMode: TREND_CONFIG.FILTER_MODE,
+    });
+    
+    // Current market analysis
+    this.currentVolatility = null;
+    this.currentTrend = null;
+    this.lastAnalysisTime = 0;
     
     // Current price
     this.currentPrice = 0;
@@ -186,18 +227,22 @@ export class EnhancedMonitor {
     console.log('📋 Performing initial order sync...');
     await this.syncOrders();
     
-    // 2. Start native WebSocket for user data (if enabled and not in test mode)
+    // 2. Initial market analysis (volatility + trend)
+    console.log('📊 Performing initial market analysis...');
+    await this.updateMarketAnalysis();
+    
+    // 3. Start native WebSocket for user data (if enabled and not in test mode)
     if (this.options.useNativeWebSocket && !this.testMode) {
       await this.startUserDataWebSocket();
     }
     
-    // 3. Start price feed
+    // 4. Start price feed
     await this.startPriceFeed();
     
-    // 4. Start periodic sync
+    // 5. Start periodic sync
     this.startPeriodicSync();
     
-    // 5. Setup graceful shutdown
+    // 6. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -205,6 +250,8 @@ export class EnhancedMonitor {
     console.log(`  ✓ Real-time price feed (${this.options.useNativeWebSocket ? 'WebSocket' : 'REST polling'})`);
     console.log(`  ✓ Order database sync (every ${this.options.syncInterval / 1000}s)`);
     console.log(`  ✓ Smart grid rebalancing (${this.options.autoRebalance ? 'AUTO' : 'MANUAL'})`);
+    console.log(`  ✓ Volatility-based grid spacing (${this.options.useVolatilityGrid ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Multi-timeframe trend filter (${this.options.useTrendFilter ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -428,9 +475,24 @@ export class EnhancedMonitor {
       return;
     }
     
-    // Display stats
+    // Update market analysis periodically
+    await this.maybeUpdateMarketAnalysis();
+    
+    // Display stats with market analysis
     const activeOrders = this.db.getActiveOrders(this.botName);
-    console.log(`📊 Orders: ${activeOrders.length} | Fills: ${this.stats.totalFills} | Rebalances: ${this.stats.totalRebalances}`);
+    let statusLine = `📊 Orders: ${activeOrders.length} | Fills: ${this.stats.totalFills} | Rebalances: ${this.stats.totalRebalances}`;
+    
+    // Add volatility info if available
+    if (this.currentVolatility && this.options.useVolatilityGrid) {
+      statusLine += ` | Vol: ${this.currentVolatility.volatility.regime} (${this.currentVolatility.volatility.multiplier}x)`;
+    }
+    
+    // Add trend info if available
+    if (this.currentTrend && this.options.useTrendFilter) {
+      statusLine += ` | Trend: ${this.currentTrend.trendName}`;
+    }
+    
+    console.log(statusLine);
   }
 
   /**
@@ -633,7 +695,15 @@ export class EnhancedMonitor {
    */
   async placeReplacementOrder(filledTrade) {
     const oppositeSide = filledTrade.side === 'buy' ? 'sell' : 'buy';
-    const gridSpacing = (this.bot.upper_price - this.bot.lower_price) / this.bot.adjusted_grid_count;
+    
+    // Get volatility-adjusted grid spacing
+    let gridSpacing = (this.bot.upper_price - this.bot.lower_price) / this.bot.adjusted_grid_count;
+    
+    // Apply volatility adjustment if enabled
+    if (this.options.useVolatilityGrid && this.currentVolatility) {
+      gridSpacing *= this.currentVolatility.volatility.multiplier;
+    }
+    
     const newPrice = filledTrade.side === 'buy'
       ? filledTrade.price + gridSpacing
       : filledTrade.price - gridSpacing;
@@ -642,6 +712,31 @@ export class EnhancedMonitor {
     if (newPrice < this.bot.lower_price || newPrice > this.bot.upper_price) {
       console.log(`   ⚠️  Replacement price $${newPrice.toFixed(2)} outside grid, skipping`);
       return;
+    }
+    
+    // Check trend filter before placing order
+    if (this.options.useTrendFilter && this.currentTrend) {
+      const rec = this.currentTrend.recommendation;
+      
+      // In hard mode, block orders against strong trends
+      if (TREND_CONFIG.FILTER_MODE === 'hard') {
+        if (oppositeSide === 'buy' && !rec.allowBuys) {
+          console.log(`   🚫 Trend filter blocked BUY: ${rec.message}`);
+          return;
+        }
+        if (oppositeSide === 'sell' && !rec.allowSells) {
+          console.log(`   🚫 Trend filter blocked SELL: ${rec.message}`);
+          return;
+        }
+      }
+      
+      // In soft mode, just log a warning for counter-trend orders
+      if (TREND_CONFIG.FILTER_MODE === 'soft') {
+        const bias = oppositeSide === 'buy' ? rec.buyBias : rec.sellBias;
+        if (bias < -0.1) {
+          console.log(`   ⚠️  Counter-trend ${oppositeSide.toUpperCase()}: ${rec.message}`);
+        }
+      }
     }
     
     try {
@@ -798,6 +893,62 @@ export class EnhancedMonitor {
   }
 
   /**
+   * Update market analysis (volatility and trend)
+   */
+  async updateMarketAnalysis() {
+    try {
+      // Update volatility analysis
+      if (this.options.useVolatilityGrid) {
+        const baseGrid = {
+          lower: this.bot.lower_price,
+          upper: this.bot.upper_price,
+          count: this.bot.adjusted_grid_count,
+        };
+        
+        this.currentVolatility = await this.volatilityManager.calculateAdjustedGrid(
+          this.exchange,
+          this.bot.symbol,
+          baseGrid
+        );
+        
+        if (this.currentVolatility && !this.currentVolatility.error) {
+          console.log(`📈 Volatility: ${this.currentVolatility.volatility.regime} (ATR: ${this.currentVolatility.volatility.atrPercent}%, Multiplier: ${this.currentVolatility.volatility.multiplier}x)`);
+        }
+      }
+      
+      // Update trend analysis
+      if (this.options.useTrendFilter) {
+        this.currentTrend = await this.trendFilter.analyzeTrend(
+          this.exchange,
+          this.bot.symbol
+        );
+        
+        if (this.currentTrend) {
+          console.log(`📉 Trend: ${this.currentTrend.trendName} (Confidence: ${(this.currentTrend.confidence * 100).toFixed(0)}%, Aligned: ${this.currentTrend.aligned ? 'Yes' : 'No'})`);
+          console.log(`   Recommendation: ${this.currentTrend.recommendation.message}`);
+        }
+      }
+      
+      this.lastAnalysisTime = Date.now();
+      
+    } catch (error) {
+      console.error(`⚠️  Market analysis error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if market analysis needs updating and update if so
+   */
+  async maybeUpdateMarketAnalysis() {
+    const timeSinceLastAnalysis = Date.now() - this.lastAnalysisTime;
+    const updateInterval = Math.min(VOLATILITY_CONFIG.UPDATE_INTERVAL, TREND_CONFIG.UPDATE_INTERVAL);
+    
+    if (timeSinceLastAnalysis >= updateInterval) {
+      await this.updateMarketAnalysis();
+    }
+  }
+
+  /**
    * Format symbol from BTCUSD to BTC/USD
    */
   formatSymbol(symbol) {
@@ -882,18 +1033,43 @@ async function main() {
   const args = process.argv.slice(2);
   const botName = args.find(a => !a.startsWith('--')) || args[args.indexOf('--name') + 1];
   
-  if (!botName) {
-    console.error('Usage: node enhanced-monitor.mjs <bot-name>');
-    console.error('       node enhanced-monitor.mjs --name <bot-name>');
-    process.exit(1);
+  if (!botName || args.includes('--help') || args.includes('-h')) {
+    console.log(`
+Enhanced Grid Bot Monitor v${VERSION}
+`);
+    console.log('Usage: node enhanced-monitor.mjs <bot-name> [options]\n');
+    console.log('Options:');
+    console.log('  --no-rebalance       Disable automatic grid rebalancing');
+    console.log('  --no-ws              Disable native WebSocket (use REST only)');
+    console.log('  --no-volatility      Disable volatility-based grid spacing');
+    console.log('  --no-trend           Disable multi-timeframe trend filter');
+    console.log('  --sync-interval <ms> Set sync interval in milliseconds (default: 60000)');
+    console.log('  --trend-mode <mode>  Set trend filter mode: soft or hard (default: soft)');
+    console.log('  --help, -h           Show this help message\n');
+    console.log('Examples:');
+    console.log('  node enhanced-monitor.mjs live-btc-bot');
+    console.log('  node enhanced-monitor.mjs live-btc-bot --no-volatility');
+    console.log('  node enhanced-monitor.mjs live-btc-bot --trend-mode hard\n');
+    process.exit(botName ? 1 : 0);
   }
   
   // Parse options
   const options = {
     autoRebalance: !args.includes('--no-rebalance'),
     useNativeWebSocket: !args.includes('--no-ws'),
+    useVolatilityGrid: !args.includes('--no-volatility'),
+    useTrendFilter: !args.includes('--no-trend'),
     syncInterval: parseInt(args[args.indexOf('--sync-interval') + 1]) || SYNC_CONFIG.SYNC_INTERVAL,
   };
+  
+  // Parse trend mode
+  const trendModeIdx = args.indexOf('--trend-mode');
+  if (trendModeIdx !== -1 && args[trendModeIdx + 1]) {
+    const mode = args[trendModeIdx + 1].toLowerCase();
+    if (mode === 'hard' || mode === 'soft') {
+      TREND_CONFIG.FILTER_MODE = mode;
+    }
+  }
   
   try {
     const monitor = new EnhancedMonitor(botName, options);
