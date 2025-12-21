@@ -131,12 +131,29 @@ export class DatabaseManager {
       )
     `);
 
+    // Equity snapshots table for tracking total equity over time
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS equity_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+        usd_balance REAL NOT NULL,
+        btc_balance REAL DEFAULT 0,
+        btc_price REAL DEFAULT 0,
+        eth_balance REAL DEFAULT 0,
+        eth_price REAL DEFAULT 0,
+        sol_balance REAL DEFAULT 0,
+        sol_price REAL DEFAULT 0,
+        total_equity_usd REAL NOT NULL
+      )
+    `);
+
     // Create indexes for performance
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_orders_bot_name ON orders(bot_name);
       CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
       CREATE INDEX IF NOT EXISTS idx_trades_bot_name ON trades(bot_name);
       CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_equity_timestamp ON equity_snapshots(timestamp);
     `);
   }
 
@@ -614,6 +631,88 @@ export class DatabaseManager {
       metrics: this.db.prepare('SELECT * FROM metrics').all(),
       exportedAt: new Date().toISOString()
     };
+  }
+
+  // ==================== EQUITY TRACKING ====================
+
+  /**
+   * Save an equity snapshot
+   */
+  saveEquitySnapshot(snapshot) {
+    const stmt = this.db.prepare(`
+      INSERT INTO equity_snapshots (
+        timestamp, usd_balance, btc_balance, btc_price, 
+        eth_balance, eth_price, sol_balance, sol_price, total_equity_usd
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    const timestamp = snapshot.timestamp || new Date().toISOString().replace('T', ' ').slice(0, 19);
+    
+    return stmt.run(
+      timestamp,
+      snapshot.usd_balance || 0,
+      snapshot.btc_balance || 0,
+      snapshot.btc_price || 0,
+      snapshot.eth_balance || 0,
+      snapshot.eth_price || 0,
+      snapshot.sol_balance || 0,
+      snapshot.sol_price || 0,
+      snapshot.total_equity_usd
+    );
+  }
+
+  /**
+   * Get the most recent equity snapshot
+   */
+  getLatestEquitySnapshot() {
+    const stmt = this.db.prepare(`
+      SELECT * FROM equity_snapshots ORDER BY timestamp DESC LIMIT 1
+    `);
+    return stmt.get();
+  }
+
+  /**
+   * Get equity snapshot from approximately 24 hours ago
+   */
+  getEquitySnapshot24hAgo() {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const yesterdayStr = yesterday.toISOString().replace('T', ' ').slice(0, 19);
+    
+    // Get the closest snapshot to 24 hours ago
+    const stmt = this.db.prepare(`
+      SELECT * FROM equity_snapshots 
+      WHERE timestamp <= ?
+      ORDER BY timestamp DESC LIMIT 1
+    `);
+    return stmt.get(yesterdayStr);
+  }
+
+  /**
+   * Get all equity snapshots within a time range
+   */
+  getEquitySnapshots(hoursBack = 24) {
+    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+    const sinceStr = since.toISOString().replace('T', ' ').slice(0, 19);
+    
+    const stmt = this.db.prepare(`
+      SELECT * FROM equity_snapshots 
+      WHERE timestamp >= ?
+      ORDER BY timestamp ASC
+    `);
+    return stmt.all(sinceStr);
+  }
+
+  /**
+   * Clean up old equity snapshots (keep last N days)
+   */
+  cleanupEquitySnapshots(daysToKeep = 30) {
+    const cutoff = new Date(Date.now() - daysToKeep * 24 * 60 * 60 * 1000);
+    const cutoffStr = cutoff.toISOString().replace('T', ' ').slice(0, 19);
+    
+    const stmt = this.db.prepare(`
+      DELETE FROM equity_snapshots WHERE timestamp < ?
+    `);
+    return stmt.run(cutoffStr);
   }
 }
 

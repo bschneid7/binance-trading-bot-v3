@@ -486,6 +486,43 @@ async function runHealthCheck() {
   
   console.log(info(`Found ${bots.length} bot(s) configured`));
   
+  // Fetch current balances and prices for equity calculation
+  let currentEquity = null;
+  try {
+    const balance = await exchange.fetchBalance();
+    const tickers = await exchange.fetchTickers(['BTC/USD', 'ETH/USD', 'SOL/USD']);
+    
+    const usdBalance = balance.USD?.total || 0;
+    const btcBalance = balance.BTC?.total || 0;
+    const ethBalance = balance.ETH?.total || 0;
+    const solBalance = balance.SOL?.total || 0;
+    
+    const btcPrice = tickers['BTC/USD']?.last || 0;
+    const ethPrice = tickers['ETH/USD']?.last || 0;
+    const solPrice = tickers['SOL/USD']?.last || 0;
+    
+    const totalEquityUsd = usdBalance + 
+      (btcBalance * btcPrice) + 
+      (ethBalance * ethPrice) + 
+      (solBalance * solPrice);
+    
+    currentEquity = {
+      usd_balance: usdBalance,
+      btc_balance: btcBalance,
+      btc_price: btcPrice,
+      eth_balance: ethBalance,
+      eth_price: ethPrice,
+      sol_balance: solBalance,
+      sol_price: solPrice,
+      total_equity_usd: totalEquityUsd
+    };
+    
+    // Save current equity snapshot
+    db.saveEquitySnapshot(currentEquity);
+  } catch (e) {
+    console.log(warning(`Could not fetch equity data: ${e.message}`));
+  }
+  
   // Check each bot and collect P&L data
   const results = [];
   let totalPnL = 0;
@@ -520,11 +557,36 @@ async function runHealthCheck() {
   console.log(`${colors.red}Issues: ${issueBots.length}${colors.reset}`);
   
   // P&L Summary
-  console.log(`\n${header('P&L Summary:')}`);
+  console.log(`\n${header('P&L Summary:')}`);  
   console.log(`   Total P&L (All Time): $${totalPnL.toFixed(2)}`);
   const pnl24hColor = total24hPnL >= 0 ? colors.green : colors.red;
   const pnl24hSign = total24hPnL >= 0 ? '+' : '';
-  console.log(`   24h P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
+  console.log(`   24h Realized P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
+  
+  // Equity Summary
+  if (currentEquity) {
+    console.log(`\n${header('Equity Summary:')}`);
+    console.log(`   Current Total Equity: $${currentEquity.total_equity_usd.toFixed(2)}`);
+    console.log(`   Holdings:`);
+    console.log(`      USD: $${currentEquity.usd_balance.toFixed(2)}`);
+    console.log(`      BTC: ${currentEquity.btc_balance.toFixed(6)} ($${(currentEquity.btc_balance * currentEquity.btc_price).toFixed(2)})`);
+    console.log(`      ETH: ${currentEquity.eth_balance.toFixed(6)} ($${(currentEquity.eth_balance * currentEquity.eth_price).toFixed(2)})`);
+    console.log(`      SOL: ${currentEquity.sol_balance.toFixed(6)} ($${(currentEquity.sol_balance * currentEquity.sol_price).toFixed(2)})`);
+    
+    // Calculate 24h equity change
+    const snapshot24hAgo = db.getEquitySnapshot24hAgo();
+    if (snapshot24hAgo) {
+      const equityChange = currentEquity.total_equity_usd - snapshot24hAgo.total_equity_usd;
+      const equityChangePct = (equityChange / snapshot24hAgo.total_equity_usd) * 100;
+      const eqColor = equityChange >= 0 ? colors.green : colors.red;
+      const eqSign = equityChange >= 0 ? '+' : '';
+      console.log(`\n   24h Equity Change: ${eqColor}${eqSign}$${equityChange.toFixed(2)} (${eqSign}${equityChangePct.toFixed(2)}%)${colors.reset}`);
+      console.log(`   (Equity 24h ago: $${snapshot24hAgo.total_equity_usd.toFixed(2)})`);
+    } else {
+      console.log(`\n   ${colors.yellow}24h Equity Change: Not enough history yet${colors.reset}`);
+      console.log(`   (First snapshot recorded - check back in 24 hours)`);
+    }
+  }
   
   if (issueBots.length > 0) {
     console.log(`\n${header('Bots with issues:')}`);
