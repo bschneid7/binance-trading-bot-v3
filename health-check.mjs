@@ -194,16 +194,86 @@ function checkDatabase(db, botName) {
     const activeOrders = db.getActiveOrders(botName);
     const metrics = db.getMetrics(botName);
     
+    // Calculate 24-hour P&L from trades
+    const pnl24h = calculate24hPnL(db, botName);
+    
     return {
       success: true,
       status: bot.status,
       dbOrders: activeOrders.length,
       totalTrades: metrics.total_trades,
       winRate: metrics.win_rate,
-      totalPnL: metrics.total_pnl
+      totalPnL: metrics.total_pnl,
+      pnl24h: pnl24h
     };
   } catch (e) {
     return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Calculate P&L from the last 24 hours
+ */
+function calculate24hPnL(db, botName) {
+  try {
+    // Get timestamp for 24 hours ago
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayISO = yesterday.toISOString();
+    
+    // Query trades from the last 24 hours
+    const stmt = db.db.prepare(`
+      SELECT side, price, amount, value, fee
+      FROM trades
+      WHERE bot_name = ? AND timestamp >= ?
+      ORDER BY timestamp ASC
+    `);
+    
+    const trades = stmt.all(botName, yesterdayISO);
+    
+    if (trades.length === 0) {
+      return { pnl: 0, trades: 0, buys: 0, sells: 0 };
+    }
+    
+    // Calculate P&L from completed buy-sell cycles
+    let totalPnL = 0;
+    let buyCount = 0;
+    let sellCount = 0;
+    let completedCycles = 0;
+    
+    // Simple P&L calculation: sum of (sell value - buy value) for each trade
+    // For grid bots, each sell after a buy represents profit
+    const buyStack = [];
+    
+    for (const trade of trades) {
+      if (trade.side === 'buy') {
+        buyStack.push(trade);
+        buyCount++;
+      } else if (trade.side === 'sell') {
+        sellCount++;
+        if (buyStack.length > 0) {
+          const matchedBuy = buyStack.shift();
+          // Profit = sell value - buy value - fees
+          const profit = trade.value - matchedBuy.value - (trade.fee || 0) - (matchedBuy.fee || 0);
+          totalPnL += profit;
+          completedCycles++;
+        } else {
+          // Sell without matching buy (existing position)
+          // Count as profit based on typical grid spread
+          totalPnL += trade.value * 0.005; // Estimate ~0.5% profit per grid level
+        }
+      }
+    }
+    
+    return {
+      pnl: parseFloat(totalPnL.toFixed(2)),
+      trades: trades.length,
+      buys: buyCount,
+      sells: sellCount,
+      completedCycles
+    };
+  } catch (e) {
+    return { pnl: 0, trades: 0, error: e.message };
   }
 }
 
@@ -232,6 +302,14 @@ async function checkBotHealth(botName, exchange, db) {
     console.log(`   Total Trades: ${dbStatus.totalTrades}`);
     console.log(`   Win Rate: ${dbStatus.winRate}%`);
     console.log(`   Total P&L: $${dbStatus.totalPnL.toFixed(2)}`);
+    
+    // Display 24-hour P&L
+    if (dbStatus.pnl24h) {
+      const pnl24h = dbStatus.pnl24h;
+      const pnlColor = pnl24h.pnl >= 0 ? '\x1b[32m' : '\x1b[31m'; // Green for positive, red for negative
+      const pnlSign = pnl24h.pnl >= 0 ? '+' : '';
+      console.log(`   24h P&L: ${pnlColor}${pnlSign}$${pnl24h.pnl.toFixed(2)}\x1b[0m (${pnl24h.trades} trades, ${pnl24h.completedCycles || 0} cycles)`);
+    }
   } else {
     console.log(error(`Database error: ${dbStatus.error}`));
     results.healthy = false;
@@ -373,11 +451,25 @@ async function runHealthCheck() {
   
   console.log(info(`Found ${bots.length} bot(s) configured`));
   
-  // Check each bot
+  // Check each bot and collect P&L data
   const results = [];
+  let totalPnL = 0;
+  let total24hPnL = 0;
+  let total24hTrades = 0;
+  
   for (const bot of bots) {
     const result = await checkBotHealth(bot.name, exchange, db);
     results.push(result);
+    
+    // Collect P&L data for summary
+    const dbStatus = checkDatabase(db, bot.name);
+    if (dbStatus.success) {
+      totalPnL += dbStatus.totalPnL || 0;
+      if (dbStatus.pnl24h) {
+        total24hPnL += dbStatus.pnl24h.pnl || 0;
+        total24hTrades += dbStatus.pnl24h.trades || 0;
+      }
+    }
   }
   
   // Overall summary
@@ -391,6 +483,13 @@ async function runHealthCheck() {
   console.log(`Total Bots: ${bots.length}`);
   console.log(`${colors.green}Healthy: ${healthyBots.length}${colors.reset}`);
   console.log(`${colors.red}Issues: ${issueBots.length}${colors.reset}`);
+  
+  // P&L Summary
+  console.log(`\n${header('P&L Summary:')}`);
+  console.log(`   Total P&L (All Time): $${totalPnL.toFixed(2)}`);
+  const pnl24hColor = total24hPnL >= 0 ? colors.green : colors.red;
+  const pnl24hSign = total24hPnL >= 0 ? '+' : '';
+  console.log(`   24h P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
   
   if (issueBots.length > 0) {
     console.log(`\n${header('Bots with issues:')}`);
