@@ -43,8 +43,28 @@ function header(msg) { return `${colors.bold}${msg}${colors.reset}`; }
 
 /**
  * Check if a monitor process is running for a bot
+ * Supports both old (grid-bot-cli-v5.mjs) and new (enhanced-monitor.mjs) monitors
  */
 function checkProcess(botName) {
+  // Try enhanced monitor first (new)
+  try {
+    const result = execSync(`ps aux | grep "enhanced-monitor.mjs ${botName}" | grep -v grep`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    
+    if (result.trim()) {
+      const parts = result.trim().split(/\s+/);
+      const pid = parts[1];
+      const cpu = parts[2];
+      const mem = parts[3];
+      return { running: true, pid, cpu, mem, type: 'enhanced' };
+    }
+  } catch (e) {
+    // grep returns exit code 1 if no match
+  }
+  
+  // Try old monitor (legacy)
   try {
     const result = execSync(`ps aux | grep "grid-bot-cli-v5.mjs monitor --name ${botName}" | grep -v grep`, {
       encoding: 'utf-8',
@@ -56,19 +76,27 @@ function checkProcess(botName) {
       const pid = parts[1];
       const cpu = parts[2];
       const mem = parts[3];
-      return { running: true, pid, cpu, mem };
+      return { running: true, pid, cpu, mem, type: 'legacy' };
     }
   } catch (e) {
     // grep returns exit code 1 if no match
   }
+  
   return { running: false };
 }
 
 /**
  * Check log file for recent activity
+ * Checks both enhanced monitor logs and legacy logs
  */
 function checkLogActivity(botName) {
-  const logPath = join(__dirname, 'logs', `${botName}.log`);
+  // Try enhanced monitor log first
+  let logPath = join(__dirname, 'logs', `enhanced-${botName.replace('live-', '')}-bot.log`);
+  
+  // If enhanced log doesn't exist, try the legacy log path
+  if (!existsSync(logPath)) {
+    logPath = join(__dirname, 'logs', `${botName}.log`);
+  }
   
   if (!existsSync(logPath)) {
     return { exists: false, message: 'Log file not found' };
@@ -211,7 +239,8 @@ async function checkBotHealth(botName, exchange, db) {
   const processStatus = checkProcess(botName);
   
   if (processStatus.running) {
-    console.log(success(`Monitor process running`));
+    const monitorType = processStatus.type === 'enhanced' ? 'Enhanced Monitor' : 'Legacy Monitor';
+    console.log(success(`Monitor process running (${monitorType})`));
     console.log(`   PID: ${processStatus.pid}`);
     console.log(`   CPU: ${processStatus.cpu}%`);
     console.log(`   Memory: ${processStatus.mem}%`);
