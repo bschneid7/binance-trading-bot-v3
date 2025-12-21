@@ -238,14 +238,16 @@ function calculate24hPnL(db, botName) {
     }
     
     // Calculate P&L from trades
-    // For grid bots, profit comes from the spread between buy and sell prices
-    let totalPnL = 0;
+    // For grid bots, profit comes from completed buy-sell cycles
     let buyCount = 0;
     let sellCount = 0;
-    let completedCycles = 0;
     let totalBuyValue = 0;
     let totalSellValue = 0;
     let totalFees = 0;
+    
+    // Collect all buys and sells with their values
+    const buys = [];
+    const sells = [];
     
     for (const trade of trades) {
       const fee = trade.fee || 0;
@@ -254,41 +256,49 @@ function calculate24hPnL(db, botName) {
       if (trade.side === 'buy') {
         buyCount++;
         totalBuyValue += trade.value;
+        buys.push({ price: trade.price, value: trade.value, amount: trade.amount });
       } else if (trade.side === 'sell') {
         sellCount++;
         totalSellValue += trade.value;
+        sells.push({ price: trade.price, value: trade.value, amount: trade.amount });
       }
     }
     
-    // For grid bots, P&L = total sells - total buys - fees
-    // This works because grid bots buy low and sell high within the grid
-    // Note: This may show negative if more buys than sells (accumulating position)
-    // or positive if more sells than buys (reducing position)
+    // For grid bots, realized P&L comes from completed cycles
+    // A cycle = buy at lower price, sell at higher price
+    // Profit per cycle ≈ grid_spacing_percent * trade_value
     
-    // Calculate realized P&L based on completed cycles
-    // A cycle is a buy followed by a sell (or vice versa)
-    completedCycles = Math.min(buyCount, sellCount);
+    // Calculate realized P&L:
+    // Method: For each sell, assume it closes a previous buy at a lower price
+    // Grid profit = sum of (sell_price - buy_price) * amount for matched pairs
     
-    // Simple approach: average profit per completed cycle
-    // Grid profit = (avg sell price - avg buy price) * quantity per cycle
-    if (completedCycles > 0 && buyCount > 0 && sellCount > 0) {
-      const avgBuyPrice = totalBuyValue / buyCount;
-      const avgSellPrice = totalSellValue / sellCount;
-      // Estimate profit per cycle based on average prices
-      // Use the smaller of buy/sell counts as the number of completed cycles
-      const avgTradeValue = (totalBuyValue / buyCount + totalSellValue / sellCount) / 2;
-      const spreadPercent = (avgSellPrice - avgBuyPrice) / avgBuyPrice;
-      totalPnL = completedCycles * avgTradeValue * spreadPercent - totalFees;
-    } else if (sellCount > 0 && buyCount === 0) {
-      // Only sells - estimate profit from grid spread (~0.5-1%)
-      totalPnL = totalSellValue * 0.005 - totalFees;
-    } else if (buyCount > 0 && sellCount === 0) {
-      // Only buys - no realized profit yet (position building)
-      totalPnL = 0 - totalFees;
+    let realizedPnL = 0;
+    const completedCycles = Math.min(buyCount, sellCount);
+    
+    if (completedCycles > 0) {
+      // Sort buys by price ascending (lowest first)
+      // Sort sells by price ascending (lowest first)
+      buys.sort((a, b) => a.price - b.price);
+      sells.sort((a, b) => a.price - b.price);
+      
+      // Match lowest buys with lowest sells (FIFO-like matching)
+      // In grid trading, sells should be at higher prices than buys
+      for (let i = 0; i < completedCycles; i++) {
+        const buy = buys[i];
+        const sell = sells[i];
+        // Profit = sell value - buy value (assuming similar amounts)
+        // Use the smaller amount if they differ
+        const matchedAmount = Math.min(buy.amount, sell.amount);
+        const profit = (sell.price - buy.price) * matchedAmount;
+        realizedPnL += profit;
+      }
     }
     
+    // Subtract fees from realized P&L
+    realizedPnL -= totalFees;
+    
     return {
-      pnl: parseFloat(totalPnL.toFixed(2)),
+      pnl: parseFloat(realizedPnL.toFixed(2)),
       trades: trades.length,
       buys: buyCount,
       sells: sellCount,
