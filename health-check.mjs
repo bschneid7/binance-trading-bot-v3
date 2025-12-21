@@ -90,8 +90,12 @@ function checkProcess(botName) {
  * Checks both enhanced monitor logs and legacy logs
  */
 function checkLogActivity(botName) {
-  // Try enhanced monitor log first
-  let logPath = join(__dirname, 'logs', `enhanced-${botName.replace('live-', '')}-bot.log`);
+  // Map bot name to enhanced log file name
+  // live-btc-bot -> enhanced-btc-bot.log
+  // live-eth-bot -> enhanced-eth-bot.log
+  // live-sol-bot -> enhanced-sol-bot.log
+  const enhancedLogName = botName.replace('live-', 'enhanced-') + '.log';
+  let logPath = join(__dirname, 'logs', enhancedLogName);
   
   // If enhanced log doesn't exist, try the legacy log path
   if (!existsSync(logPath)) {
