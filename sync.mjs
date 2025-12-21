@@ -210,6 +210,7 @@ async function syncOrders(exchange, bot, results, repair = false) {
     results.orders.missing.push(...missing.map(o => ({ ...o, botName: bot.name })));
     
     if (repair) {
+      let importedCount = 0;
       for (const order of missing) {
         try {
           db.createOrder({
@@ -220,9 +221,13 @@ async function syncOrders(exchange, bot, results, repair = false) {
             price: order.price,
             amount: order.amount,
           });
+          importedCount++;
           results.orders.repaired++;
         } catch (e) {
-          results.errors.push({ type: 'missing_import', order: order.id, error: e.message });
+          // Ignore duplicate key errors - order already exists
+          if (!e.message.includes('UNIQUE constraint')) {
+            results.errors.push({ type: 'missing_import', order: order.id, error: e.message });
+          }
         }
       }
       console.log(`      ${colors.green}✓ Imported ${missing.length} missing orders${colors.reset}`);

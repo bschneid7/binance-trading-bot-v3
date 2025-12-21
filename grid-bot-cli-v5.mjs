@@ -42,6 +42,14 @@ const VERSION = '5.2.0-TRAILING-STOP';
 // Initialize trailing stop manager
 const trailingStopManager = new TrailingStopManager();
 
+// Initialize error handling components
+const apiCircuitBreaker = new CircuitBreaker({
+  failureThreshold: 5,
+  resetTimeout: 60000,
+  name: 'binance-api'
+});
+const errorLogger = new ErrorLogger();
+
 // Risk management configuration
 const RISK_CONFIG = {
   STOP_LOSS_PERCENT: 0.15,
