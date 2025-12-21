@@ -217,9 +217,11 @@ function checkDatabase(db, botName) {
 function calculate24hPnL(db, botName) {
   try {
     // Get timestamp for 24 hours ago
+    // Database stores timestamps as 'YYYY-MM-DD HH:MM:SS' (SQLite format, no T)
     const now = new Date();
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const yesterdayISO = yesterday.toISOString();
+    // Format as SQLite-compatible timestamp (space instead of T, no milliseconds)
+    const yesterdayStr = yesterday.toISOString().replace('T', ' ').slice(0, 19);
     
     // Query trades from the last 24 hours
     const stmt = db.db.prepare(`
@@ -229,40 +231,60 @@ function calculate24hPnL(db, botName) {
       ORDER BY timestamp ASC
     `);
     
-    const trades = stmt.all(botName, yesterdayISO);
+    const trades = stmt.all(botName, yesterdayStr);
     
     if (trades.length === 0) {
       return { pnl: 0, trades: 0, buys: 0, sells: 0 };
     }
     
-    // Calculate P&L from completed buy-sell cycles
+    // Calculate P&L from trades
+    // For grid bots, profit comes from the spread between buy and sell prices
     let totalPnL = 0;
     let buyCount = 0;
     let sellCount = 0;
     let completedCycles = 0;
-    
-    // Simple P&L calculation: sum of (sell value - buy value) for each trade
-    // For grid bots, each sell after a buy represents profit
-    const buyStack = [];
+    let totalBuyValue = 0;
+    let totalSellValue = 0;
+    let totalFees = 0;
     
     for (const trade of trades) {
+      const fee = trade.fee || 0;
+      totalFees += fee;
+      
       if (trade.side === 'buy') {
-        buyStack.push(trade);
         buyCount++;
+        totalBuyValue += trade.value;
       } else if (trade.side === 'sell') {
         sellCount++;
-        if (buyStack.length > 0) {
-          const matchedBuy = buyStack.shift();
-          // Profit = sell value - buy value - fees
-          const profit = trade.value - matchedBuy.value - (trade.fee || 0) - (matchedBuy.fee || 0);
-          totalPnL += profit;
-          completedCycles++;
-        } else {
-          // Sell without matching buy (existing position)
-          // Count as profit based on typical grid spread
-          totalPnL += trade.value * 0.005; // Estimate ~0.5% profit per grid level
-        }
+        totalSellValue += trade.value;
       }
+    }
+    
+    // For grid bots, P&L = total sells - total buys - fees
+    // This works because grid bots buy low and sell high within the grid
+    // Note: This may show negative if more buys than sells (accumulating position)
+    // or positive if more sells than buys (reducing position)
+    
+    // Calculate realized P&L based on completed cycles
+    // A cycle is a buy followed by a sell (or vice versa)
+    completedCycles = Math.min(buyCount, sellCount);
+    
+    // Simple approach: average profit per completed cycle
+    // Grid profit = (avg sell price - avg buy price) * quantity per cycle
+    if (completedCycles > 0 && buyCount > 0 && sellCount > 0) {
+      const avgBuyPrice = totalBuyValue / buyCount;
+      const avgSellPrice = totalSellValue / sellCount;
+      // Estimate profit per cycle based on average prices
+      // Use the smaller of buy/sell counts as the number of completed cycles
+      const avgTradeValue = (totalBuyValue / buyCount + totalSellValue / sellCount) / 2;
+      const spreadPercent = (avgSellPrice - avgBuyPrice) / avgBuyPrice;
+      totalPnL = completedCycles * avgTradeValue * spreadPercent - totalFees;
+    } else if (sellCount > 0 && buyCount === 0) {
+      // Only sells - estimate profit from grid spread (~0.5-1%)
+      totalPnL = totalSellValue * 0.005 - totalFees;
+    } else if (buyCount > 0 && sellCount === 0) {
+      // Only buys - no realized profit yet (position building)
+      totalPnL = 0 - totalFees;
     }
     
     return {
@@ -270,7 +292,10 @@ function calculate24hPnL(db, botName) {
       trades: trades.length,
       buys: buyCount,
       sells: sellCount,
-      completedCycles
+      completedCycles,
+      totalBuyValue: parseFloat(totalBuyValue.toFixed(2)),
+      totalSellValue: parseFloat(totalSellValue.toFixed(2)),
+      totalFees: parseFloat(totalFees.toFixed(4))
     };
   } catch (e) {
     return { pnl: 0, trades: 0, error: e.message };
