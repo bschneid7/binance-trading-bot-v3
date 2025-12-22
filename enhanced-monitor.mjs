@@ -955,15 +955,26 @@ export class EnhancedMonitor {
       // Find missing orders (on exchange but not in DB)
       for (const order of exchangeOrders) {
         if (!dbIds.has(order.id)) {
-          this.db.createOrder({
-            id: order.id,
-            bot_name: this.botName,
-            symbol: this.bot.symbol,
-            side: order.side,
-            price: order.price,
-            amount: order.amount,
-          });
-          repairs++;
+          try {
+            // Check if order exists (might be in a different state)
+            const existingOrder = this.db.getOrder(order.id);
+            if (!existingOrder) {
+              this.db.createOrder({
+                id: order.id,
+                bot_name: this.botName,
+                symbol: this.bot.symbol,
+                side: order.side,
+                price: order.price,
+                amount: order.amount,
+              });
+              repairs++;
+            }
+          } catch (e) {
+            // Order already exists, skip
+            if (!e.message?.includes('UNIQUE constraint')) {
+              console.error(`   Sync order error: ${e.message}`);
+            }
+          }
         }
       }
       
