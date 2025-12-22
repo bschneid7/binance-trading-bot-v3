@@ -25,10 +25,12 @@ import { PositionSizer } from './position-sizer.mjs';
 import { TimeOfDayOptimizer } from './time-optimizer.mjs';
 import { CorrelationRiskManager } from './correlation-risk.mjs';
 import { AdaptiveGridManager } from './adaptive-grid.mjs';
+import { FeeTracker } from './fee-tracker.mjs';
+import { SpreadOptimizer } from './spread-optimizer.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.4.0-ENHANCED';
+const VERSION = '1.5.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -125,6 +127,23 @@ const ADAPTIVE_GRID_CONFIG = {
   UPDATE_INTERVAL: 10 * 60 * 1000,  // 10 minutes
 };
 
+// Fee tracking configuration
+const FEE_TRACKER_CONFIG = {
+  ENABLED: true,
+  MAKER_FEE_RATE: 0.001,  // 0.1%
+  TAKER_FEE_RATE: 0.002,  // 0.2%
+  USE_BNB_FOR_FEES: false,
+  REPORT_INTERVAL: 60 * 60 * 1000,  // 1 hour
+};
+
+// Spread optimizer configuration
+const SPREAD_OPTIMIZER_CONFIG = {
+  ENABLED: true,
+  FORCE_MAKER: true,  // Always try to be maker
+  MAX_PRICE_ADJUSTMENT: 0.005,  // Max 0.5% price adjustment
+  UPDATE_INTERVAL: 10 * 1000,  // 10 seconds
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -143,6 +162,8 @@ export class EnhancedMonitor {
       useTimeOptimizer: TIME_OPTIMIZER_CONFIG.ENABLED,
       useCorrelationRisk: CORRELATION_CONFIG.ENABLED,
       useAdaptiveGrid: ADAPTIVE_GRID_CONFIG.ENABLED,
+      useFeeTracker: FEE_TRACKER_CONFIG.ENABLED,
+      useSpreadOptimizer: SPREAD_OPTIMIZER_CONFIG.ENABLED,
       ...options,
     };
     
@@ -242,6 +263,20 @@ export class EnhancedMonitor {
     });
     this.currentAdaptiveAnalysis = null;
     this.lastAdaptiveUpdate = 0;
+    
+    // Fee tracker
+    this.feeTracker = new FeeTracker({
+      makerFeeRate: FEE_TRACKER_CONFIG.MAKER_FEE_RATE,
+      takerFeeRate: FEE_TRACKER_CONFIG.TAKER_FEE_RATE,
+      useBnbForFees: FEE_TRACKER_CONFIG.USE_BNB_FOR_FEES,
+    });
+    this.lastFeeReport = 0;
+    
+    // Spread optimizer
+    this.spreadOptimizer = new SpreadOptimizer({
+      maxPriceAdjustment: SPREAD_OPTIMIZER_CONFIG.MAX_PRICE_ADJUSTMENT,
+    });
+    this.lastSpreadUpdate = 0;
     
     // Current market analysis
     this.currentVolatility = null;
@@ -362,7 +397,19 @@ export class EnhancedMonitor {
       console.log('📊 Adaptive grid manager initialized (collecting data...)');
     }
     
-    // 10. Setup graceful shutdown
+    // 10. Initialize fee tracker
+    if (this.options.useFeeTracker) {
+      console.log('💰 Fee tracker initialized (monitoring maker/taker fees)');
+    }
+    
+    // 11. Initialize spread optimizer
+    if (this.options.useSpreadOptimizer) {
+      console.log('📈 Spread optimizer initialized (ensuring maker orders)');
+      // Start periodic order book updates
+      this.startSpreadMonitoring();
+    }
+    
+    // 12. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -377,6 +424,8 @@ export class EnhancedMonitor {
     console.log(`  ✓ Time-of-day optimization (${this.options.useTimeOptimizer ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Correlation risk management (${this.options.useCorrelationRisk ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Adaptive grid spacing (${this.options.useAdaptiveGrid ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Fee tier tracking (${this.options.useFeeTracker ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Spread-aware orders (${this.options.useSpreadOptimizer ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -492,6 +541,19 @@ export class EnhancedMonitor {
     });
     
     this.stats.totalFills++;
+    
+    // Record trade for fee tracking
+    this.recordTradeForFees({
+      symbol: symbol,
+      side: trade.side,
+      price: trade.price,
+      amount: trade.amount,
+      fee: trade.fee,
+      feeAsset: trade.feeAsset,
+      isMaker: trade.isMaker,
+      orderId: trade.orderId,
+      timestamp: Date.now(),
+    });
     
     // Place replacement order
     if (trade.isFilled) {
@@ -851,9 +913,18 @@ export class EnhancedMonitor {
     const gridMultiplier = this.getCombinedGridMultiplier();
     gridSpacing *= gridMultiplier;
     
-    const newPrice = filledTrade.side === 'buy'
+    let newPrice = filledTrade.side === 'buy'
       ? filledTrade.price + gridSpacing
       : filledTrade.price - gridSpacing;
+    
+    // Optimize price for maker status
+    if (this.options.useSpreadOptimizer) {
+      const optimized = this.optimizeOrderPrice(oppositeSide, newPrice);
+      if (optimized.wasAdjusted) {
+        console.log(`   📊 Price adjusted for maker: $${newPrice.toFixed(2)} → $${optimized.optimizedPrice.toFixed(2)}`);
+        newPrice = optimized.optimizedPrice;
+      }
+    }
     
     // Check if new price is within grid
     if (newPrice < this.bot.lower_price || newPrice > this.bot.upper_price) {
@@ -1316,6 +1387,128 @@ export class EnhancedMonitor {
   }
 
   /**
+   * Start spread monitoring for maker order optimization
+   */
+  startSpreadMonitoring() {
+    // Update order book periodically
+    this.spreadMonitorTimer = setInterval(async () => {
+      await this.updateSpreadData();
+    }, SPREAD_OPTIMIZER_CONFIG.UPDATE_INTERVAL);
+    
+    // Initial update
+    this.updateSpreadData();
+  }
+
+  /**
+   * Update spread data from order book
+   */
+  async updateSpreadData() {
+    if (!this.options.useSpreadOptimizer) {
+      return;
+    }
+    
+    try {
+      const orderBook = await this.exchange.fetchOrderBook(this.bot.symbol, 5);
+      this.spreadOptimizer.updateOrderBook(orderBook);
+      this.lastSpreadUpdate = Date.now();
+    } catch (error) {
+      // Silently fail - spread data is optional
+    }
+  }
+
+  /**
+   * Optimize order price for maker status
+   */
+  optimizeOrderPrice(side, price) {
+    if (!this.options.useSpreadOptimizer) {
+      return { optimizedPrice: price, isMaker: false, wasAdjusted: false };
+    }
+    
+    const result = this.spreadOptimizer.optimizeOrderPrice(side, price, {
+      tickSize: this.getTickSize(),
+      forceMaker: SPREAD_OPTIMIZER_CONFIG.FORCE_MAKER,
+    });
+    
+    return {
+      optimizedPrice: result.optimizedPrice,
+      isMaker: result.isMaker,
+      wasAdjusted: result.adjustment > 0,
+      adjustment: result.adjustment,
+      reason: result.reason,
+    };
+  }
+
+  /**
+   * Get tick size for the symbol
+   */
+  getTickSize() {
+    // Default tick sizes based on price
+    if (this.currentPrice > 10000) return 0.01;  // BTC
+    if (this.currentPrice > 100) return 0.01;    // ETH
+    return 0.001;  // SOL and others
+  }
+
+  /**
+   * Record a trade for fee tracking
+   */
+  recordTradeForFees(trade) {
+    if (!this.options.useFeeTracker) {
+      return;
+    }
+    
+    this.feeTracker.recordTrade({
+      symbol: trade.symbol,
+      side: trade.side,
+      price: trade.price,
+      amount: trade.amount,
+      fee: trade.fee,
+      feeAsset: trade.feeAsset,
+      isMaker: trade.isMaker,
+      orderId: trade.orderId,
+      timestamp: trade.timestamp || Date.now(),
+    });
+    
+    // Periodic fee report
+    this.maybeLogFeeReport();
+  }
+
+  /**
+   * Log fee report periodically
+   */
+  maybeLogFeeReport() {
+    if (!this.options.useFeeTracker) {
+      return;
+    }
+    
+    const timeSinceLastReport = Date.now() - this.lastFeeReport;
+    if (timeSinceLastReport < FEE_TRACKER_CONFIG.REPORT_INTERVAL) {
+      return;
+    }
+    
+    const stats = this.feeTracker.getStats();
+    if (stats.totalTrades > 0) {
+      console.log(`\n💰 FEE REPORT`);
+      console.log(`   Total trades: ${stats.totalTrades} (${stats.makerPercent.toFixed(1)}% maker)`);
+      console.log(`   Total fees: $${stats.totalFees.toFixed(2)} (avg ${(stats.avgFeePercent).toFixed(3)}%)`);
+      console.log(`   Fees saved: $${stats.feesSaved.toFixed(2)} (vs all taker)`);
+      if (stats.potentialSavings > 0) {
+        console.log(`   Potential savings: $${stats.potentialSavings.toFixed(2)} (if all maker)`);
+      }
+      
+      // Show recommendations
+      const recs = this.feeTracker.getRecommendations();
+      if (recs.recommendations.length > 0) {
+        console.log(`   Recommendations:`);
+        for (const rec of recs.recommendations) {
+          console.log(`      • ${rec.message}`);
+        }
+      }
+    }
+    
+    this.lastFeeReport = Date.now();
+  }
+
+  /**
    * Handle trailing stop triggered
    */
   async handleTrailingStopTriggered(result) {
@@ -1461,6 +1654,11 @@ export class EnhancedMonitor {
       this.partialFillTimer = null;
     }
     
+    if (this.spreadMonitorTimer) {
+      clearInterval(this.spreadMonitorTimer);
+      this.spreadMonitorTimer = null;
+    }
+    
     if (this.priceFeed) {
       await this.priceFeed.stop();
       this.priceFeed = null;
@@ -1491,6 +1689,18 @@ export class EnhancedMonitor {
     console.log(`  Sync Repairs: ${this.stats.syncRepairs}`);
     console.log(`  Partial Fills Handled: ${this.stats.partialFillsHandled}`);
     console.log(`  Capital Recovered: $${this.stats.capitalRecovered.toFixed(2)}`);
+    
+    // Fee statistics
+    if (this.options.useFeeTracker) {
+      const feeStats = this.feeTracker.getStats();
+      if (feeStats.totalTrades > 0) {
+        console.log(`  Fee Stats:`);
+        console.log(`    Total Fees: $${feeStats.totalFees.toFixed(2)}`);
+        console.log(`    Maker Ratio: ${feeStats.makerPercent.toFixed(1)}%`);
+        console.log(`    Fees Saved: $${feeStats.feesSaved.toFixed(2)}`);
+      }
+    }
+    
     console.log(`${'═'.repeat(60)}\n`);
   }
 }
@@ -1515,6 +1725,8 @@ Enhanced Grid Bot Monitor v${VERSION}
     console.log('  --no-time-opt        Disable time-of-day optimization');
     console.log('  --no-correlation     Disable correlation risk management');
     console.log('  --no-adaptive-grid   Disable adaptive grid spacing');
+    console.log('  --no-fee-tracker     Disable fee tier tracking');
+    console.log('  --no-spread-opt      Disable spread-aware order placement');
     console.log('  --sync-interval <ms> Set sync interval in milliseconds (default: 60000)');
     console.log('  --trend-mode <mode>  Set trend filter mode: soft or hard (default: soft)');
     console.log('  --help, -h           Show this help message\n');
@@ -1536,6 +1748,8 @@ Enhanced Grid Bot Monitor v${VERSION}
     useTimeOptimizer: !args.includes('--no-time-opt'),
     useCorrelationRisk: !args.includes('--no-correlation'),
     useAdaptiveGrid: !args.includes('--no-adaptive-grid'),
+    useFeeTracker: !args.includes('--no-fee-tracker'),
+    useSpreadOptimizer: !args.includes('--no-spread-opt'),
     syncInterval: parseInt(args[args.indexOf('--sync-interval') + 1]) || SYNC_CONFIG.SYNC_INTERVAL,
   };
   
