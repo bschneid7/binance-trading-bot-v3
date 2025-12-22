@@ -581,6 +581,13 @@ export class DatabaseManager {
     return stmt.get(botName) || this.updateMetrics(botName);
   }
 
+  /**
+   * Get bot metrics (alias for getMetrics, used by position sizer)
+   */
+  getBotMetrics(botName) {
+    return this.getMetrics(botName);
+  }
+
   // ==================== MIGRATION UTILITIES ====================
 
   /**
