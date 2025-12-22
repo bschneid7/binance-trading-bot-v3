@@ -488,10 +488,12 @@ async function runHealthCheck() {
   
   // Fetch current balances and prices for equity calculation
   let currentEquity = null;
+  let allCoinsEquity = null;
   try {
     const balance = await exchange.fetchBalance();
     const tickers = await exchange.fetchTickers(['BTC/USD', 'ETH/USD', 'SOL/USD']);
     
+    // Monitored coins (BTC, ETH, SOL, USD)
     const usdBalance = balance.USD?.total || 0;
     const btcBalance = balance.BTC?.total || 0;
     const ethBalance = balance.ETH?.total || 0;
@@ -501,7 +503,7 @@ async function runHealthCheck() {
     const ethPrice = tickers['ETH/USD']?.last || 0;
     const solPrice = tickers['SOL/USD']?.last || 0;
     
-    const totalEquityUsd = usdBalance + 
+    const monitoredEquityUsd = usdBalance + 
       (btcBalance * btcPrice) + 
       (ethBalance * ethPrice) + 
       (solBalance * solPrice);
@@ -514,10 +516,59 @@ async function runHealthCheck() {
       eth_price: ethPrice,
       sol_balance: solBalance,
       sol_price: solPrice,
-      total_equity_usd: totalEquityUsd
+      total_equity_usd: monitoredEquityUsd
     };
     
-    // Save current equity snapshot
+    // Calculate total equity from ALL coins
+    let totalAllCoinsUsd = 0;
+    const otherCoins = [];
+    
+    // Get all non-zero balances
+    for (const [coin, balanceInfo] of Object.entries(balance)) {
+      const total = balanceInfo?.total || 0;
+      if (total > 0 && coin !== 'info' && coin !== 'free' && coin !== 'used' && coin !== 'total') {
+        if (coin === 'USD') {
+          totalAllCoinsUsd += total;
+        } else if (coin === 'BTC') {
+          totalAllCoinsUsd += total * btcPrice;
+        } else if (coin === 'ETH') {
+          totalAllCoinsUsd += total * ethPrice;
+        } else if (coin === 'SOL') {
+          totalAllCoinsUsd += total * solPrice;
+        } else {
+          // Try to fetch price for other coins
+          try {
+            const ticker = await exchange.fetchTicker(`${coin}/USD`);
+            const coinPrice = ticker?.last || 0;
+            const coinValue = total * coinPrice;
+            if (coinValue > 0.01) {  // Only include if worth more than 1 cent
+              totalAllCoinsUsd += coinValue;
+              otherCoins.push({ coin, balance: total, price: coinPrice, value: coinValue });
+            }
+          } catch (e) {
+            // Coin might not have a USD pair, try USDT
+            try {
+              const ticker = await exchange.fetchTicker(`${coin}/USDT`);
+              const coinPrice = ticker?.last || 0;
+              const coinValue = total * coinPrice;
+              if (coinValue > 0.01) {
+                totalAllCoinsUsd += coinValue;
+                otherCoins.push({ coin, balance: total, price: coinPrice, value: coinValue });
+              }
+            } catch (e2) {
+              // Skip coins we can't price
+            }
+          }
+        }
+      }
+    }
+    
+    allCoinsEquity = {
+      total: totalAllCoinsUsd,
+      otherCoins: otherCoins.sort((a, b) => b.value - a.value)  // Sort by value descending
+    };
+    
+    // Save current equity snapshot (monitored coins only for historical tracking)
     db.saveEquitySnapshot(currentEquity);
   } catch (e) {
     console.log(warning(`Could not fetch equity data: ${e.message}`));
@@ -566,22 +617,37 @@ async function runHealthCheck() {
   // Equity Summary
   if (currentEquity) {
     console.log(`\n${header('Equity Summary:')}`);
-    console.log(`   Current Total Equity: $${currentEquity.total_equity_usd.toFixed(2)}`);
-    console.log(`   Holdings:`);
+    
+    // Show total equity (all coins) first if available
+    if (allCoinsEquity) {
+      console.log(`   ${colors.bold}Total Equity (All Coins): $${allCoinsEquity.total.toFixed(2)}${colors.reset}`);
+    }
+    
+    console.log(`   Total Equity (Monitored): $${currentEquity.total_equity_usd.toFixed(2)}`);
+    
+    console.log(`\n   Monitored Holdings:`);
     console.log(`      USD: $${currentEquity.usd_balance.toFixed(2)}`);
     console.log(`      BTC: ${currentEquity.btc_balance.toFixed(6)} ($${(currentEquity.btc_balance * currentEquity.btc_price).toFixed(2)})`);
     console.log(`      ETH: ${currentEquity.eth_balance.toFixed(6)} ($${(currentEquity.eth_balance * currentEquity.eth_price).toFixed(2)})`);
     console.log(`      SOL: ${currentEquity.sol_balance.toFixed(6)} ($${(currentEquity.sol_balance * currentEquity.sol_price).toFixed(2)})`);
     
-    // Calculate 24h equity change
+    // Show other coins if any
+    if (allCoinsEquity && allCoinsEquity.otherCoins.length > 0) {
+      console.log(`\n   Other Holdings:`);
+      for (const coin of allCoinsEquity.otherCoins) {
+        console.log(`      ${coin.coin}: ${coin.balance.toFixed(6)} ($${coin.value.toFixed(2)})`);
+      }
+    }
+    
+    // Calculate 24h equity change (based on monitored coins for consistency)
     const snapshot24hAgo = db.getEquitySnapshot24hAgo();
     if (snapshot24hAgo) {
       const equityChange = currentEquity.total_equity_usd - snapshot24hAgo.total_equity_usd;
       const equityChangePct = (equityChange / snapshot24hAgo.total_equity_usd) * 100;
       const eqColor = equityChange >= 0 ? colors.green : colors.red;
       const eqSign = equityChange >= 0 ? '+' : '';
-      console.log(`\n   24h Equity Change: ${eqColor}${eqSign}$${equityChange.toFixed(2)} (${eqSign}${equityChangePct.toFixed(2)}%)${colors.reset}`);
-      console.log(`   (Equity 24h ago: $${snapshot24hAgo.total_equity_usd.toFixed(2)})`);
+      console.log(`\n   24h Equity Change (Monitored): ${eqColor}${eqSign}$${equityChange.toFixed(2)} (${eqSign}${equityChangePct.toFixed(2)}%)${colors.reset}`);
+      console.log(`   (Monitored equity 24h ago: $${snapshot24hAgo.total_equity_usd.toFixed(2)})`);
     } else {
       console.log(`\n   ${colors.yellow}24h Equity Change: Not enough history yet${colors.reset}`);
       console.log(`   (First snapshot recorded - check back in 24 hours)`);
