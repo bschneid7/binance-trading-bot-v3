@@ -21,10 +21,11 @@ import { TrailingStopManager } from './trailing-stop.mjs';
 import { VolatilityGridManager } from './volatility-grid.mjs';
 import { TrendFilter, TREND, TREND_NAMES } from './trend-filter.mjs';
 import { PartialFillHandler } from './partial-fill-handler.mjs';
+import { PositionSizer } from './position-sizer.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.2.0-ENHANCED';
+const VERSION = '1.3.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -80,6 +81,16 @@ const PARTIAL_FILL_CONFIG = {
   CHECK_INTERVAL: 5 * 60 * 1000,  // 5 minutes
 };
 
+// Dynamic position sizing configuration
+const POSITION_SIZING_CONFIG = {
+  ENABLED: true,
+  MAX_RISK_PER_TRADE: 0.02,      // 2% max risk per trade
+  MAX_POSITION_PERCENT: 0.10,    // 10% max of equity per position
+  MIN_POSITION_PERCENT: 0.005,   // 0.5% min position
+  KELLY_FRACTION: 0.25,          // Use 25% of Kelly (conservative)
+  UPDATE_INTERVAL: 10 * 60 * 1000,  // 10 minutes
+};
+
 // Trend filter configuration
 const TREND_CONFIG = {
   ENABLED: true,
@@ -102,6 +113,7 @@ export class EnhancedMonitor {
       useVolatilityGrid: VOLATILITY_CONFIG.ENABLED,
       useTrendFilter: TREND_CONFIG.ENABLED,
       usePartialFillHandler: PARTIAL_FILL_CONFIG.ENABLED,
+      useDynamicSizing: POSITION_SIZING_CONFIG.ENABLED,
       ...options,
     };
     
@@ -169,6 +181,16 @@ export class EnhancedMonitor {
     });
     this.partialFillTimer = null;
     this.lastPartialFillCheck = 0;
+    
+    // Position sizer
+    this.positionSizer = new PositionSizer({
+      maxRiskPerTrade: POSITION_SIZING_CONFIG.MAX_RISK_PER_TRADE,
+      maxPositionPercent: POSITION_SIZING_CONFIG.MAX_POSITION_PERCENT,
+      minPositionPercent: POSITION_SIZING_CONFIG.MIN_POSITION_PERCENT,
+      kellyFraction: POSITION_SIZING_CONFIG.KELLY_FRACTION,
+    });
+    this.currentPositionSize = null;
+    this.lastPositionSizeUpdate = 0;
     
     // Current market analysis
     this.currentVolatility = null;
@@ -273,7 +295,12 @@ export class EnhancedMonitor {
       this.startPartialFillHandler();
     }
     
-    // 7. Setup graceful shutdown
+    // 7. Initialize dynamic position sizing
+    if (this.options.useDynamicSizing) {
+      await this.updatePositionSize();
+    }
+    
+    // 8. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -284,6 +311,7 @@ export class EnhancedMonitor {
     console.log(`  ✓ Volatility-based grid spacing (${this.options.useVolatilityGrid ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Multi-timeframe trend filter (${this.options.useTrendFilter ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Partial fill recovery (${this.options.usePartialFillHandler ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Dynamic position sizing (${this.options.useDynamicSizing ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -510,6 +538,9 @@ export class EnhancedMonitor {
     // Update market analysis periodically
     await this.maybeUpdateMarketAnalysis();
     
+    // Update position sizing periodically
+    await this.maybeUpdatePositionSize();
+    
     // Display stats with market analysis
     const activeOrders = this.db.getActiveOrders(this.botName);
     let statusLine = `📊 Orders: ${activeOrders.length} | Fills: ${this.stats.totalFills} | Rebalances: ${this.stats.totalRebalances}`;
@@ -654,6 +685,9 @@ export class EnhancedMonitor {
     const levels = [];
     const step = (upper - lower) / gridCount;
     
+    // Use dynamic order size if available
+    const orderSize = this.getCurrentOrderSize();
+    
     for (let i = 0; i <= gridCount; i++) {
       const price = lower + (step * i);
       const side = price < currentPrice ? 'buy' : 'sell';
@@ -664,7 +698,7 @@ export class EnhancedMonitor {
       levels.push({
         price: Math.round(price * 100) / 100,
         side,
-        amount: this.bot.order_size,
+        amount: orderSize,
       });
     }
     
@@ -728,6 +762,9 @@ export class EnhancedMonitor {
   async placeReplacementOrder(filledTrade) {
     const oppositeSide = filledTrade.side === 'buy' ? 'sell' : 'buy';
     
+    // Get dynamic order size or use filled trade amount
+    const orderSize = this.getCurrentOrderSize() || filledTrade.amount;
+    
     // Get volatility-adjusted grid spacing
     let gridSpacing = (this.bot.upper_price - this.bot.lower_price) / this.bot.adjusted_grid_count;
     
@@ -780,12 +817,12 @@ export class EnhancedMonitor {
           symbol: this.bot.symbol,
           side: oppositeSide,
           price: parseFloat(newPrice.toFixed(2)),
-          amount: filledTrade.amount,
+          amount: orderSize,
         });
       } else {
         const order = await retryWithBackoff(
           () => this.circuitBreaker.execute(() =>
-            this.exchange.createLimitOrder(this.bot.symbol, oppositeSide, filledTrade.amount, newPrice)
+            this.exchange.createLimitOrder(this.bot.symbol, oppositeSide, orderSize, newPrice)
           ),
           { maxAttempts: 3, initialDelay: 500, context: `Place ${oppositeSide} replacement` }
         );
@@ -944,6 +981,71 @@ export class EnhancedMonitor {
       
     } catch (error) {
       console.error(`❌ Partial fill check error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update dynamic position size
+   */
+  async updatePositionSize() {
+    if (!this.options.useDynamicSizing) {
+      return;
+    }
+    
+    try {
+      const gridSpacing = (this.bot.upper_price - this.bot.lower_price) / this.bot.adjusted_grid_count / this.currentPrice;
+      
+      const sizing = await this.positionSizer.getSizingRecommendation({
+        db: this.db,
+        exchange: this.exchange,
+        botName: this.botName,
+        symbol: this.bot.symbol,
+        baseOrderSize: this.bot.order_size,
+        volatility: this.currentVolatility?.volatility,
+        gridSpacing,
+      });
+      
+      this.currentPositionSize = sizing;
+      this.lastPositionSizeUpdate = Date.now();
+      
+      // Log sizing info
+      console.log(`\n📊 POSITION SIZING`);
+      console.log(`   Base size: ${sizing.baseSize}`);
+      console.log(`   Adjusted size: ${sizing.adjustedSize} (${sizing.sizeChange > 0 ? '+' : ''}${sizing.sizeChange}%)`);
+      console.log(`   Equity used: ${sizing.metrics?.equityUsed || 'N/A'}`);
+      
+      if (sizing.adjustments && sizing.adjustments.length > 0) {
+        for (const adj of sizing.adjustments) {
+          console.log(`   → ${adj.factor}: ${adj.reason}`);
+        }
+      }
+      
+    } catch (error) {
+      console.error(`❌ Position sizing error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get current position size (dynamic or base)
+   */
+  getCurrentOrderSize() {
+    if (this.options.useDynamicSizing && this.currentPositionSize) {
+      return this.currentPositionSize.adjustedSize;
+    }
+    return this.bot.order_size;
+  }
+
+  /**
+   * Check if position size needs updating
+   */
+  async maybeUpdatePositionSize() {
+    if (!this.options.useDynamicSizing) {
+      return;
+    }
+    
+    const timeSinceLastUpdate = Date.now() - this.lastPositionSizeUpdate;
+    if (timeSinceLastUpdate >= POSITION_SIZING_CONFIG.UPDATE_INTERVAL) {
+      await this.updatePositionSize();
     }
   }
 
@@ -1143,6 +1245,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     console.log('  --no-volatility      Disable volatility-based grid spacing');
     console.log('  --no-trend           Disable multi-timeframe trend filter');
     console.log('  --no-partial-fill    Disable partial fill recovery');
+    console.log('  --no-dynamic-sizing  Disable dynamic position sizing');
     console.log('  --sync-interval <ms> Set sync interval in milliseconds (default: 60000)');
     console.log('  --trend-mode <mode>  Set trend filter mode: soft or hard (default: soft)');
     console.log('  --help, -h           Show this help message\n');
@@ -1160,6 +1263,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     useVolatilityGrid: !args.includes('--no-volatility'),
     useTrendFilter: !args.includes('--no-trend'),
     usePartialFillHandler: !args.includes('--no-partial-fill'),
+    useDynamicSizing: !args.includes('--no-dynamic-sizing'),
     syncInterval: parseInt(args[args.indexOf('--sync-interval') + 1]) || SYNC_CONFIG.SYNC_INTERVAL,
   };
   
