@@ -522,6 +522,7 @@ async function runHealthCheck() {
     // Calculate total equity from ALL coins
     let totalAllCoinsUsd = 0;
     const otherCoins = [];
+    const unpricedCoins = [];
     
     // Get all non-zero balances
     for (const [coin, balanceInfo] of Object.entries(balance)) {
@@ -536,28 +537,68 @@ async function runHealthCheck() {
         } else if (coin === 'SOL') {
           totalAllCoinsUsd += total * solPrice;
         } else {
-          // Try to fetch price for other coins
+          // Try multiple pricing methods for other coins
+          let priced = false;
+          let coinPrice = 0;
+          let pricePair = '';
+          
+          // Method 1: Try USD pair
           try {
             const ticker = await exchange.fetchTicker(`${coin}/USD`);
-            const coinPrice = ticker?.last || 0;
+            coinPrice = ticker?.last || 0;
+            if (coinPrice > 0) {
+              priced = true;
+              pricePair = 'USD';
+            }
+          } catch (e) { /* No USD pair */ }
+          
+          // Method 2: Try USDT pair
+          if (!priced) {
+            try {
+              const ticker = await exchange.fetchTicker(`${coin}/USDT`);
+              coinPrice = ticker?.last || 0;
+              if (coinPrice > 0) {
+                priced = true;
+                pricePair = 'USDT';
+              }
+            } catch (e) { /* No USDT pair */ }
+          }
+          
+          // Method 3: Try BTC pair and convert via BTC price
+          if (!priced) {
+            try {
+              const ticker = await exchange.fetchTicker(`${coin}/BTC`);
+              const btcPairPrice = ticker?.last || 0;
+              if (btcPairPrice > 0) {
+                coinPrice = btcPairPrice * btcPrice;  // Convert to USD
+                priced = true;
+                pricePair = 'BTC';
+              }
+            } catch (e) { /* No BTC pair */ }
+          }
+          
+          // Method 4: Try ETH pair and convert via ETH price
+          if (!priced) {
+            try {
+              const ticker = await exchange.fetchTicker(`${coin}/ETH`);
+              const ethPairPrice = ticker?.last || 0;
+              if (ethPairPrice > 0) {
+                coinPrice = ethPairPrice * ethPrice;  // Convert to USD
+                priced = true;
+                pricePair = 'ETH';
+              }
+            } catch (e) { /* No ETH pair */ }
+          }
+          
+          if (priced) {
             const coinValue = total * coinPrice;
             if (coinValue > 0.01) {  // Only include if worth more than 1 cent
               totalAllCoinsUsd += coinValue;
-              otherCoins.push({ coin, balance: total, price: coinPrice, value: coinValue });
+              otherCoins.push({ coin, balance: total, price: coinPrice, value: coinValue, pricePair });
             }
-          } catch (e) {
-            // Coin might not have a USD pair, try USDT
-            try {
-              const ticker = await exchange.fetchTicker(`${coin}/USDT`);
-              const coinPrice = ticker?.last || 0;
-              const coinValue = total * coinPrice;
-              if (coinValue > 0.01) {
-                totalAllCoinsUsd += coinValue;
-                otherCoins.push({ coin, balance: total, price: coinPrice, value: coinValue });
-              }
-            } catch (e2) {
-              // Skip coins we can't price
-            }
+          } else {
+            // Track unpriced coins
+            unpricedCoins.push({ coin, balance: total });
           }
         }
       }
@@ -565,7 +606,8 @@ async function runHealthCheck() {
     
     allCoinsEquity = {
       total: totalAllCoinsUsd,
-      otherCoins: otherCoins.sort((a, b) => b.value - a.value)  // Sort by value descending
+      otherCoins: otherCoins.sort((a, b) => b.value - a.value),  // Sort by value descending
+      unpricedCoins: unpricedCoins
     };
     
     // Save current equity snapshot (monitored coins only for historical tracking)
@@ -635,7 +677,16 @@ async function runHealthCheck() {
     if (allCoinsEquity && allCoinsEquity.otherCoins.length > 0) {
       console.log(`\n   Other Holdings:`);
       for (const coin of allCoinsEquity.otherCoins) {
-        console.log(`      ${coin.coin}: ${coin.balance.toFixed(6)} ($${coin.value.toFixed(2)})`);
+        const pairInfo = coin.pricePair ? ` [via ${coin.pricePair}]` : '';
+        console.log(`      ${coin.coin}: ${coin.balance.toFixed(6)} ($${coin.value.toFixed(2)})${colors.blue}${pairInfo}${colors.reset}`);
+      }
+    }
+    
+    // Show unpriced coins if any
+    if (allCoinsEquity && allCoinsEquity.unpricedCoins && allCoinsEquity.unpricedCoins.length > 0) {
+      console.log(`\n   ${colors.yellow}Unpriced Holdings (no trading pair found):${colors.reset}`);
+      for (const coin of allCoinsEquity.unpricedCoins) {
+        console.log(`      ${coin.coin}: ${coin.balance.toFixed(6)} ${colors.yellow}(value unknown)${colors.reset}`);
       }
     }
     
