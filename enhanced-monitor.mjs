@@ -22,10 +22,13 @@ import { VolatilityGridManager } from './volatility-grid.mjs';
 import { TrendFilter, TREND, TREND_NAMES } from './trend-filter.mjs';
 import { PartialFillHandler } from './partial-fill-handler.mjs';
 import { PositionSizer } from './position-sizer.mjs';
+import { TimeOfDayOptimizer } from './time-optimizer.mjs';
+import { CorrelationRiskManager } from './correlation-risk.mjs';
+import { AdaptiveGridManager } from './adaptive-grid.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.3.0-ENHANCED';
+const VERSION = '1.4.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -99,6 +102,29 @@ const TREND_CONFIG = {
   UPDATE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
 };
 
+// Time-of-day optimization configuration
+const TIME_OPTIMIZER_CONFIG = {
+  ENABLED: true,
+  UPDATE_INTERVAL: 15 * 60 * 1000,  // 15 minutes
+};
+
+// Correlation risk management configuration
+const CORRELATION_CONFIG = {
+  ENABLED: true,
+  HIGH_CORRELATION_THRESHOLD: 0.8,
+  LOW_CORRELATION_THRESHOLD: 0.3,
+  HIGH_CORRELATION_REDUCTION: 0.7,  // Reduce to 70% when high correlation
+  UPDATE_INTERVAL: 60 * 60 * 1000,  // 1 hour
+};
+
+// Adaptive grid spacing configuration
+const ADAPTIVE_GRID_CONFIG = {
+  ENABLED: true,
+  MIN_GRID_MULTIPLIER: 0.5,
+  MAX_GRID_MULTIPLIER: 2.0,
+  UPDATE_INTERVAL: 10 * 60 * 1000,  // 10 minutes
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -114,6 +140,9 @@ export class EnhancedMonitor {
       useTrendFilter: TREND_CONFIG.ENABLED,
       usePartialFillHandler: PARTIAL_FILL_CONFIG.ENABLED,
       useDynamicSizing: POSITION_SIZING_CONFIG.ENABLED,
+      useTimeOptimizer: TIME_OPTIMIZER_CONFIG.ENABLED,
+      useCorrelationRisk: CORRELATION_CONFIG.ENABLED,
+      useAdaptiveGrid: ADAPTIVE_GRID_CONFIG.ENABLED,
       ...options,
     };
     
@@ -191,6 +220,28 @@ export class EnhancedMonitor {
     });
     this.currentPositionSize = null;
     this.lastPositionSizeUpdate = 0;
+    
+    // Time-of-day optimizer
+    this.timeOptimizer = new TimeOfDayOptimizer();
+    this.currentTimeAnalysis = null;
+    this.lastTimeAnalysisUpdate = 0;
+    
+    // Correlation risk manager (shared across bots via static instance)
+    this.correlationManager = new CorrelationRiskManager({
+      highCorrelationThreshold: CORRELATION_CONFIG.HIGH_CORRELATION_THRESHOLD,
+      lowCorrelationThreshold: CORRELATION_CONFIG.LOW_CORRELATION_THRESHOLD,
+      highCorrelationReduction: CORRELATION_CONFIG.HIGH_CORRELATION_REDUCTION,
+    });
+    this.currentCorrelationAnalysis = null;
+    this.lastCorrelationUpdate = 0;
+    
+    // Adaptive grid manager
+    this.adaptiveGridManager = new AdaptiveGridManager({
+      minGridMultiplier: ADAPTIVE_GRID_CONFIG.MIN_GRID_MULTIPLIER,
+      maxGridMultiplier: ADAPTIVE_GRID_CONFIG.MAX_GRID_MULTIPLIER,
+    });
+    this.currentAdaptiveAnalysis = null;
+    this.lastAdaptiveUpdate = 0;
     
     // Current market analysis
     this.currentVolatility = null;
@@ -300,7 +351,18 @@ export class EnhancedMonitor {
       await this.updatePositionSize();
     }
     
-    // 8. Setup graceful shutdown
+    // 8. Initialize time-of-day optimizer
+    if (this.options.useTimeOptimizer) {
+      this.updateTimeAnalysis();
+    }
+    
+    // 9. Initialize adaptive grid
+    if (this.options.useAdaptiveGrid) {
+      // Will populate as price data comes in
+      console.log('📊 Adaptive grid manager initialized (collecting data...)');
+    }
+    
+    // 10. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -312,6 +374,9 @@ export class EnhancedMonitor {
     console.log(`  ✓ Multi-timeframe trend filter (${this.options.useTrendFilter ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Partial fill recovery (${this.options.usePartialFillHandler ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Dynamic position sizing (${this.options.useDynamicSizing ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Time-of-day optimization (${this.options.useTimeOptimizer ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Correlation risk management (${this.options.useCorrelationRisk ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Adaptive grid spacing (${this.options.useAdaptiveGrid ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -541,6 +606,15 @@ export class EnhancedMonitor {
     // Update position sizing periodically
     await this.maybeUpdatePositionSize();
     
+    // Update time-of-day analysis periodically
+    this.maybeUpdateTimeAnalysis();
+    
+    // Update correlation risk periodically
+    this.maybeUpdateCorrelationRisk();
+    
+    // Update adaptive grid analysis
+    this.maybeUpdateAdaptiveGrid();
+    
     // Display stats with market analysis
     const activeOrders = this.db.getActiveOrders(this.botName);
     let statusLine = `📊 Orders: ${activeOrders.length} | Fills: ${this.stats.totalFills} | Rebalances: ${this.stats.totalRebalances}`;
@@ -553,6 +627,11 @@ export class EnhancedMonitor {
     // Add trend info if available
     if (this.currentTrend && this.options.useTrendFilter) {
       statusLine += ` | Trend: ${this.currentTrend.trendName}`;
+    }
+    
+    // Add time session info if available
+    if (this.currentTimeAnalysis && this.options.useTimeOptimizer) {
+      statusLine += ` | Session: ${this.currentTimeAnalysis.session}`;
     }
     
     console.log(statusLine);
@@ -762,16 +841,15 @@ export class EnhancedMonitor {
   async placeReplacementOrder(filledTrade) {
     const oppositeSide = filledTrade.side === 'buy' ? 'sell' : 'buy';
     
-    // Get dynamic order size or use filled trade amount
-    const orderSize = this.getCurrentOrderSize() || filledTrade.amount;
+    // Get dynamic order size with combined multipliers
+    let orderSize = this.getCurrentOrderSize() || filledTrade.amount;
+    const positionMultiplier = this.getCombinedPositionMultiplier();
+    orderSize *= positionMultiplier;
     
-    // Get volatility-adjusted grid spacing
+    // Get grid spacing with combined multipliers
     let gridSpacing = (this.bot.upper_price - this.bot.lower_price) / this.bot.adjusted_grid_count;
-    
-    // Apply volatility adjustment if enabled
-    if (this.options.useVolatilityGrid && this.currentVolatility) {
-      gridSpacing *= this.currentVolatility.volatility.multiplier;
-    }
+    const gridMultiplier = this.getCombinedGridMultiplier();
+    gridSpacing *= gridMultiplier;
     
     const newPrice = filledTrade.side === 'buy'
       ? filledTrade.price + gridSpacing
@@ -1050,6 +1128,183 @@ export class EnhancedMonitor {
   }
 
   /**
+   * Update time-of-day analysis
+   */
+  updateTimeAnalysis() {
+    if (!this.options.useTimeOptimizer) {
+      return;
+    }
+    
+    try {
+      this.currentTimeAnalysis = this.timeOptimizer.getGridAdjustment();
+      this.lastTimeAnalysisUpdate = Date.now();
+      
+      // Only log detailed info periodically
+      if (this.currentTimeAnalysis.isHighVolume || this.currentTimeAnalysis.isLowVolume) {
+        console.log(`\n⏰ TIME ANALYSIS`);
+        console.log(`   Session: ${this.currentTimeAnalysis.session}`);
+        console.log(`   Volume: ${(this.currentTimeAnalysis.volumeMultiplier * 100).toFixed(0)}%`);
+        console.log(`   ${this.currentTimeAnalysis.recommendation}`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Time analysis error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if time analysis needs updating
+   */
+  maybeUpdateTimeAnalysis() {
+    if (!this.options.useTimeOptimizer) {
+      return;
+    }
+    
+    const timeSinceLastUpdate = Date.now() - this.lastTimeAnalysisUpdate;
+    if (timeSinceLastUpdate >= TIME_OPTIMIZER_CONFIG.UPDATE_INTERVAL) {
+      this.updateTimeAnalysis();
+    }
+  }
+
+  /**
+   * Update correlation risk analysis
+   */
+  updateCorrelationRisk() {
+    if (!this.options.useCorrelationRisk) {
+      return;
+    }
+    
+    try {
+      // Record current price for this symbol
+      this.correlationManager.recordPrice(this.bot.symbol, this.currentPrice);
+      
+      // Get correlation analysis
+      this.currentCorrelationAnalysis = this.correlationManager.getAnalysis();
+      this.lastCorrelationUpdate = Date.now();
+      
+      // Log if elevated risk
+      if (this.currentCorrelationAnalysis.overallRisk !== 'normal') {
+        console.log(`\n⚠️ CORRELATION RISK: ${this.currentCorrelationAnalysis.overallRisk.toUpperCase()}`);
+        console.log(`   Avg Correlation: ${(this.currentCorrelationAnalysis.correlation.avgCorrelation * 100).toFixed(0)}%`);
+        console.log(`   Position Multiplier: ${(this.currentCorrelationAnalysis.overallMultiplier * 100).toFixed(0)}%`);
+        console.log(`   ${this.currentCorrelationAnalysis.correlation.recommendation}`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Correlation analysis error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if correlation analysis needs updating
+   */
+  maybeUpdateCorrelationRisk() {
+    if (!this.options.useCorrelationRisk) {
+      return;
+    }
+    
+    // Always record price
+    this.correlationManager.recordPrice(this.bot.symbol, this.currentPrice);
+    
+    const timeSinceLastUpdate = Date.now() - this.lastCorrelationUpdate;
+    if (timeSinceLastUpdate >= CORRELATION_CONFIG.UPDATE_INTERVAL) {
+      this.updateCorrelationRisk();
+    }
+  }
+
+  /**
+   * Update adaptive grid analysis
+   */
+  updateAdaptiveGrid() {
+    if (!this.options.useAdaptiveGrid) {
+      return;
+    }
+    
+    try {
+      // Record current price
+      this.adaptiveGridManager.recordPrice(this.currentPrice);
+      
+      // Get adaptive grid analysis
+      this.currentAdaptiveAnalysis = this.adaptiveGridManager.getAnalysis();
+      this.lastAdaptiveUpdate = Date.now();
+      
+      // Log regime changes
+      if (this.currentAdaptiveAnalysis.regime !== 'unknown' && this.currentAdaptiveAnalysis.confidence > 0.5) {
+        console.log(`\n📊 ADAPTIVE GRID`);
+        console.log(`   Regime: ${this.currentAdaptiveAnalysis.regime.toUpperCase()} (${(this.currentAdaptiveAnalysis.confidence * 100).toFixed(0)}% confidence)`);
+        console.log(`   Grid Multiplier: ${this.currentAdaptiveAnalysis.gridMultiplier.toFixed(2)}x`);
+        console.log(`   Suitability: ${this.currentAdaptiveAnalysis.suitability}`);
+        console.log(`   ${this.currentAdaptiveAnalysis.recommendation}`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Adaptive grid error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Check if adaptive grid analysis needs updating
+   */
+  maybeUpdateAdaptiveGrid() {
+    if (!this.options.useAdaptiveGrid) {
+      return;
+    }
+    
+    // Always record price
+    this.adaptiveGridManager.recordPrice(this.currentPrice);
+    
+    const timeSinceLastUpdate = Date.now() - this.lastAdaptiveUpdate;
+    if (timeSinceLastUpdate >= ADAPTIVE_GRID_CONFIG.UPDATE_INTERVAL) {
+      this.updateAdaptiveGrid();
+    }
+  }
+
+  /**
+   * Get combined grid spacing multiplier from all modules
+   */
+  getCombinedGridMultiplier() {
+    let multiplier = 1.0;
+    
+    // Volatility adjustment
+    if (this.options.useVolatilityGrid && this.currentVolatility) {
+      multiplier *= this.currentVolatility.volatility.multiplier;
+    }
+    
+    // Time-of-day adjustment
+    if (this.options.useTimeOptimizer && this.currentTimeAnalysis) {
+      multiplier *= this.currentTimeAnalysis.gridDensityMultiplier;
+    }
+    
+    // Adaptive grid adjustment
+    if (this.options.useAdaptiveGrid && this.currentAdaptiveAnalysis && this.currentAdaptiveAnalysis.regime !== 'unknown') {
+      multiplier *= this.currentAdaptiveAnalysis.gridMultiplier;
+    }
+    
+    // Clamp to reasonable range
+    return Math.max(0.3, Math.min(3.0, multiplier));
+  }
+
+  /**
+   * Get combined position size multiplier from all modules
+   */
+  getCombinedPositionMultiplier() {
+    let multiplier = 1.0;
+    
+    // Time-of-day adjustment
+    if (this.options.useTimeOptimizer && this.currentTimeAnalysis) {
+      multiplier *= this.currentTimeAnalysis.orderSizeMultiplier;
+    }
+    
+    // Correlation risk adjustment
+    if (this.options.useCorrelationRisk && this.currentCorrelationAnalysis) {
+      multiplier *= this.currentCorrelationAnalysis.overallMultiplier;
+    }
+    
+    // Clamp to reasonable range
+    return Math.max(0.5, Math.min(1.5, multiplier));
+  }
+
+  /**
    * Handle trailing stop triggered
    */
   async handleTrailingStopTriggered(result) {
@@ -1246,6 +1501,9 @@ Enhanced Grid Bot Monitor v${VERSION}
     console.log('  --no-trend           Disable multi-timeframe trend filter');
     console.log('  --no-partial-fill    Disable partial fill recovery');
     console.log('  --no-dynamic-sizing  Disable dynamic position sizing');
+    console.log('  --no-time-opt        Disable time-of-day optimization');
+    console.log('  --no-correlation     Disable correlation risk management');
+    console.log('  --no-adaptive-grid   Disable adaptive grid spacing');
     console.log('  --sync-interval <ms> Set sync interval in milliseconds (default: 60000)');
     console.log('  --trend-mode <mode>  Set trend filter mode: soft or hard (default: soft)');
     console.log('  --help, -h           Show this help message\n');
@@ -1264,6 +1522,9 @@ Enhanced Grid Bot Monitor v${VERSION}
     useTrendFilter: !args.includes('--no-trend'),
     usePartialFillHandler: !args.includes('--no-partial-fill'),
     useDynamicSizing: !args.includes('--no-dynamic-sizing'),
+    useTimeOptimizer: !args.includes('--no-time-opt'),
+    useCorrelationRisk: !args.includes('--no-correlation'),
+    useAdaptiveGrid: !args.includes('--no-adaptive-grid'),
     syncInterval: parseInt(args[args.indexOf('--sync-interval') + 1]) || SYNC_CONFIG.SYNC_INTERVAL,
   };
   
