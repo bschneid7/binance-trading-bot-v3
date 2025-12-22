@@ -11,6 +11,7 @@ A sophisticated cryptocurrency grid trading bot for Binance.US with adaptive str
 - **SQLite Database**: Robust state management with transactional integrity
 - **Email Notifications**: Daily health reports and critical error alerts
 - **Systemd Integration**: Automatic restart and boot persistence
+- **Tax Reporting**: Comprehensive tax reporting for US-based traders. See [TAX_REPORTING.md](TAX_REPORTING.md) for details.
 
 ## Quick Start
 
