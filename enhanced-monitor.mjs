@@ -27,10 +27,11 @@ import { CorrelationRiskManager } from './correlation-risk.mjs';
 import { AdaptiveGridManager } from './adaptive-grid.mjs';
 import { FeeTracker } from './fee-tracker.mjs';
 import { SpreadOptimizer } from './spread-optimizer.mjs';
+import { OrderBatcher } from './order-batcher.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.5.0-ENHANCED';
+const VERSION = '1.6.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -144,6 +145,14 @@ const SPREAD_OPTIMIZER_CONFIG = {
   UPDATE_INTERVAL: 10 * 1000,  // 10 seconds
 };
 
+// Order batching configuration
+const ORDER_BATCHER_CONFIG = {
+  ENABLED: true,
+  MAX_BATCH_SIZE: 10,  // Max orders per batch
+  BATCH_DELAY_MS: 100,  // Delay between batches
+  MIN_ORDER_INTERVAL_MS: 50,  // Min time between orders
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -164,6 +173,7 @@ export class EnhancedMonitor {
       useAdaptiveGrid: ADAPTIVE_GRID_CONFIG.ENABLED,
       useFeeTracker: FEE_TRACKER_CONFIG.ENABLED,
       useSpreadOptimizer: SPREAD_OPTIMIZER_CONFIG.ENABLED,
+      useOrderBatcher: ORDER_BATCHER_CONFIG.ENABLED,
       ...options,
     };
     
@@ -277,6 +287,13 @@ export class EnhancedMonitor {
       maxPriceAdjustment: SPREAD_OPTIMIZER_CONFIG.MAX_PRICE_ADJUSTMENT,
     });
     this.lastSpreadUpdate = 0;
+    
+    // Order batcher
+    this.orderBatcher = new OrderBatcher({
+      maxBatchSize: ORDER_BATCHER_CONFIG.MAX_BATCH_SIZE,
+      batchDelayMs: ORDER_BATCHER_CONFIG.BATCH_DELAY_MS,
+      minOrderIntervalMs: ORDER_BATCHER_CONFIG.MIN_ORDER_INTERVAL_MS,
+    });
     
     // Current market analysis
     this.currentVolatility = null;
@@ -409,7 +426,12 @@ export class EnhancedMonitor {
       this.startSpreadMonitoring();
     }
     
-    // 12. Setup graceful shutdown
+    // 12. Initialize order batcher
+    if (this.options.useOrderBatcher) {
+      console.log('📦 Order batcher initialized (optimized batch execution)');
+    }
+    
+    // 13. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -426,6 +448,7 @@ export class EnhancedMonitor {
     console.log(`  ✓ Adaptive grid spacing (${this.options.useAdaptiveGrid ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Fee tier tracking (${this.options.useFeeTracker ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Spread-aware orders (${this.options.useSpreadOptimizer ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Smart order batching (${this.options.useOrderBatcher ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -775,19 +798,35 @@ export class EnhancedMonitor {
       console.log('   Cancelling existing orders...');
       const activeOrders = this.db.getActiveOrders(this.botName);
       
-      for (const order of activeOrders) {
-        if (!this.testMode) {
-          try {
-            await retryWithBackoff(
-              () => this.exchange.cancelOrder(order.id, this.bot.symbol),
-              { maxAttempts: 3, initialDelay: 500, context: `Cancel order ${order.id}` }
-            );
-          } catch (e) {
-            if (!e.message.includes('Unknown order')) {
-              console.log(`   ⚠️  Could not cancel ${order.id}: ${e.message}`);
+      if (!this.testMode && activeOrders.length > 0) {
+        // Use batched cancellation if enabled
+        if (this.options.useOrderBatcher && activeOrders.length > 1) {
+          const orderIds = activeOrders.map(o => o.id);
+          const cancelResult = await this.orderBatcher.cancelBatchOrders(
+            this.exchange,
+            orderIds,
+            this.bot.symbol
+          );
+          console.log(`   📦 Cancelled ${cancelResult.cancelled}/${activeOrders.length} orders in ${(cancelResult.executionTime / 1000).toFixed(1)}s`);
+        } else {
+          // Sequential cancellation
+          for (const order of activeOrders) {
+            try {
+              await retryWithBackoff(
+                () => this.exchange.cancelOrder(order.id, this.bot.symbol),
+                { maxAttempts: 3, initialDelay: 500, context: `Cancel order ${order.id}` }
+              );
+            } catch (e) {
+              if (!e.message.includes('Unknown order')) {
+                console.log(`   ⚠️  Could not cancel ${order.id}: ${e.message}`);
+              }
             }
           }
         }
+      }
+      
+      // Update database
+      for (const order of activeOrders) {
         this.db.cancelOrder(order.id, 'rebalance');
       }
       
@@ -847,40 +886,52 @@ export class EnhancedMonitor {
   }
 
   /**
-   * Place grid orders
+   * Place grid orders (with optional batching)
    */
   async placeGridOrders(levels) {
-    let placed = 0;
+    if (this.testMode) {
+      // Test mode: create orders directly in DB
+      let placed = 0;
+      for (const level of levels) {
+        const orderId = `${this.botName}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this.db.createOrder({
+          id: orderId,
+          bot_name: this.botName,
+          symbol: this.bot.symbol,
+          side: level.side,
+          price: level.price,
+          amount: level.amount,
+        });
+        placed++;
+      }
+      console.log(`   Placed ${placed}/${levels.length} orders (test mode)`);
+      return placed;
+    }
     
+    // Live mode: use order batcher if enabled
+    if (this.options.useOrderBatcher && levels.length > 1) {
+      return await this.placeGridOrdersBatched(levels);
+    }
+    
+    // Fallback: sequential placement
+    let placed = 0;
     for (const level of levels) {
       try {
-        if (this.testMode) {
-          const orderId = `${this.botName}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          this.db.createOrder({
-            id: orderId,
-            bot_name: this.botName,
-            symbol: this.bot.symbol,
-            side: level.side,
-            price: level.price,
-            amount: level.amount,
-          });
-        } else {
-          const order = await retryWithBackoff(
-            () => this.circuitBreaker.execute(() =>
-              this.exchange.createLimitOrder(this.bot.symbol, level.side, level.amount, level.price)
-            ),
-            { maxAttempts: 3, initialDelay: 500, context: `Place ${level.side} at $${level.price}` }
-          );
-          
-          this.db.createOrder({
-            id: order.id,
-            bot_name: this.botName,
-            symbol: this.bot.symbol,
-            side: level.side,
-            price: level.price,
-            amount: order.amount,
-          });
-        }
+        const order = await retryWithBackoff(
+          () => this.circuitBreaker.execute(() =>
+            this.exchange.createLimitOrder(this.bot.symbol, level.side, level.amount, level.price)
+          ),
+          { maxAttempts: 3, initialDelay: 500, context: `Place ${level.side} at $${level.price}` }
+        );
+        
+        this.db.createOrder({
+          id: order.id,
+          bot_name: this.botName,
+          symbol: this.bot.symbol,
+          side: level.side,
+          price: level.price,
+          amount: order.amount,
+        });
         placed++;
         
         // Rate limit
@@ -895,6 +946,62 @@ export class EnhancedMonitor {
     
     console.log(`   Placed ${placed}/${levels.length} orders`);
     return placed;
+  }
+
+  /**
+   * Place grid orders using batch optimization
+   */
+  async placeGridOrdersBatched(levels) {
+    const estimate = this.orderBatcher.estimateExecutionTime(levels.length);
+    console.log(`   📦 Batching ${levels.length} orders (est. ${estimate.estimatedSeconds.toFixed(1)}s, ${estimate.timeSavedPercent.toFixed(0)}% faster)`);
+    
+    // Optimize order list for efficient execution
+    const optimizedLevels = this.orderBatcher.optimizeOrderList(levels);
+    
+    // Prepare orders for batching
+    const orders = optimizedLevels.map(level => ({
+      side: level.side,
+      amount: level.amount,
+      price: level.price,
+    }));
+    
+    // Execute batch
+    const result = await this.orderBatcher.placeBatchOrders(
+      this.exchange,
+      orders,
+      {
+        symbol: this.bot.symbol,
+        onProgress: (progress) => {
+          if (progress.batch % 3 === 0 || progress.batch === progress.totalBatches) {
+            console.log(`   📦 Batch ${progress.batch}/${progress.totalBatches} (${progress.ordersPlaced}/${progress.totalOrders} orders)`);
+          }
+        },
+      }
+    );
+    
+    // Record successful orders in database
+    for (const r of result.results) {
+      if (r.success && r.response) {
+        this.db.createOrder({
+          id: r.response.id,
+          bot_name: this.botName,
+          symbol: this.bot.symbol,
+          side: r.order.side,
+          price: r.order.price,
+          amount: r.response.amount || r.order.amount,
+        });
+      }
+    }
+    
+    // Log results
+    const stats = this.orderBatcher.getStats();
+    console.log(`   ✅ Placed ${result.placed}/${levels.length} orders in ${(result.executionTime / 1000).toFixed(1)}s`);
+    if (result.failed > 0) {
+      console.log(`   ⚠️  ${result.failed} orders failed`);
+    }
+    console.log(`   📊 API calls saved: ${stats.apiCallsSaved} (${stats.successRate.toFixed(1)}% success rate)`);
+    
+    return result.placed;
   }
 
   /**
@@ -1701,6 +1808,17 @@ export class EnhancedMonitor {
       }
     }
     
+    // Order batching statistics
+    if (this.options.useOrderBatcher) {
+      const batchStats = this.orderBatcher.getStats();
+      if (batchStats.totalOrders > 0) {
+        console.log(`  Batch Stats:`);
+        console.log(`    Total Orders: ${batchStats.totalOrders}`);
+        console.log(`    API Calls Saved: ${batchStats.apiCallsSaved}`);
+        console.log(`    Success Rate: ${batchStats.successRate.toFixed(1)}%`);
+      }
+    }
+    
     console.log(`${'═'.repeat(60)}\n`);
   }
 }
@@ -1727,6 +1845,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     console.log('  --no-adaptive-grid   Disable adaptive grid spacing');
     console.log('  --no-fee-tracker     Disable fee tier tracking');
     console.log('  --no-spread-opt      Disable spread-aware order placement');
+    console.log('  --no-batching        Disable smart order batching');
     console.log('  --sync-interval <ms> Set sync interval in milliseconds (default: 60000)');
     console.log('  --trend-mode <mode>  Set trend filter mode: soft or hard (default: soft)');
     console.log('  --help, -h           Show this help message\n');
@@ -1750,6 +1869,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     useAdaptiveGrid: !args.includes('--no-adaptive-grid'),
     useFeeTracker: !args.includes('--no-fee-tracker'),
     useSpreadOptimizer: !args.includes('--no-spread-opt'),
+    useOrderBatcher: !args.includes('--no-batching'),
     syncInterval: parseInt(args[args.indexOf('--sync-interval') + 1]) || SYNC_CONFIG.SYNC_INTERVAL,
   };
   
