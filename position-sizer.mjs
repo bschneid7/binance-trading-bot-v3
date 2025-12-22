@@ -73,7 +73,9 @@ export class PositionSizer {
 
     // 2. Win rate adjustment (only if statistically significant)
     if (totalTrades >= this.minTradesForStats && winRate > 0) {
-      const winRateMultiplier = this.calculateWinRateMultiplier(winRate, avgWin, avgLoss);
+      // Database stores win_rate as percentage (0-100), convert to decimal (0-1)
+      const winRateDecimal = winRate > 1 ? winRate / 100 : winRate;
+      const winRateMultiplier = this.calculateWinRateMultiplier(winRateDecimal, avgWin, avgLoss);
       const winRateAdjusted = adjustedSize * winRateMultiplier;
       
       if (winRateMultiplier !== 1.0) {
@@ -81,7 +83,7 @@ export class PositionSizer {
         adjustments.push({
           factor: 'win_rate',
           adjustment: winRateMultiplier,
-          reason: `Win rate ${(winRate * 100).toFixed(1)}% → ${winRateMultiplier.toFixed(2)}x`
+          reason: `Win rate ${(winRateDecimal * 100).toFixed(1)}% → ${winRateMultiplier.toFixed(2)}x`
         });
       }
     }
