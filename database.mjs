@@ -147,6 +147,47 @@ export class DatabaseManager {
       )
     `);
 
+    // Tax lots table - tracks cost basis for each purchase
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tax_lots (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        acquired_date TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        cost_basis REAL NOT NULL,
+        cost_per_unit REAL NOT NULL,
+        remaining_quantity REAL NOT NULL,
+        source TEXT DEFAULT 'trade',
+        order_id TEXT,
+        bot_name TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Tax events table - tracks taxable disposals
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS tax_events (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        sale_date TEXT NOT NULL,
+        acquired_date TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        proceeds REAL NOT NULL,
+        cost_basis REAL NOT NULL,
+        gain_loss REAL NOT NULL,
+        is_long_term INTEGER DEFAULT 0,
+        holding_days INTEGER DEFAULT 0,
+        lot_id TEXT,
+        order_id TEXT,
+        bot_name TEXT,
+        wash_sale INTEGER DEFAULT 0,
+        wash_sale_disallowed REAL DEFAULT 0,
+        form_8949_category TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Create indexes for performance
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_orders_bot_name ON orders(bot_name);
@@ -154,6 +195,10 @@ export class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_trades_bot_name ON trades(bot_name);
       CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp);
       CREATE INDEX IF NOT EXISTS idx_equity_timestamp ON equity_snapshots(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_tax_lots_symbol ON tax_lots(symbol);
+      CREATE INDEX IF NOT EXISTS idx_tax_lots_acquired ON tax_lots(acquired_date);
+      CREATE INDEX IF NOT EXISTS idx_tax_events_symbol ON tax_events(symbol);
+      CREATE INDEX IF NOT EXISTS idx_tax_events_sale_date ON tax_events(sale_date);
     `);
   }
 
@@ -720,6 +765,153 @@ export class DatabaseManager {
       DELETE FROM equity_snapshots WHERE timestamp < ?
     `);
     return stmt.run(cutoffStr);
+  }
+
+  // ==================== TAX REPORTING ====================
+
+  /**
+   * Save a tax lot
+   */
+  saveTaxLot(lot) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO tax_lots (
+        id, symbol, acquired_date, quantity, cost_basis, cost_per_unit,
+        remaining_quantity, source, order_id, bot_name, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    
+    return stmt.run(
+      lot.id,
+      lot.symbol,
+      lot.acquiredDate,
+      lot.quantity,
+      lot.costBasis,
+      lot.costPerUnit,
+      lot.remainingQuantity,
+      lot.source || 'trade',
+      lot.orderId || null,
+      lot.botName || null
+    );
+  }
+
+  /**
+   * Update a tax lot (after partial consumption)
+   */
+  updateTaxLot(lot) {
+    const stmt = this.db.prepare(`
+      UPDATE tax_lots SET 
+        remaining_quantity = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    return stmt.run(lot.remainingQuantity, lot.id);
+  }
+
+  /**
+   * Get all tax lots
+   */
+  getTaxLots(symbol = null) {
+    if (symbol) {
+      const stmt = this.db.prepare(`
+        SELECT * FROM tax_lots WHERE symbol = ? ORDER BY acquired_date ASC
+      `);
+      return stmt.all(symbol);
+    }
+    const stmt = this.db.prepare(`
+      SELECT * FROM tax_lots ORDER BY acquired_date ASC
+    `);
+    return stmt.all();
+  }
+
+  /**
+   * Get active (non-exhausted) tax lots
+   */
+  getActiveTaxLots(symbol = null) {
+    if (symbol) {
+      const stmt = this.db.prepare(`
+        SELECT * FROM tax_lots 
+        WHERE symbol = ? AND remaining_quantity > 0.00000001
+        ORDER BY acquired_date ASC
+      `);
+      return stmt.all(symbol);
+    }
+    const stmt = this.db.prepare(`
+      SELECT * FROM tax_lots 
+      WHERE remaining_quantity > 0.00000001
+      ORDER BY acquired_date ASC
+    `);
+    return stmt.all();
+  }
+
+  /**
+   * Save a tax event
+   */
+  saveTaxEvent(event) {
+    const stmt = this.db.prepare(`
+      INSERT INTO tax_events (
+        id, symbol, sale_date, acquired_date, quantity, proceeds, cost_basis,
+        gain_loss, is_long_term, holding_days, lot_id, order_id, bot_name,
+        wash_sale, wash_sale_disallowed, form_8949_category
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    return stmt.run(
+      event.id,
+      event.symbol,
+      event.saleDate,
+      event.acquiredDate,
+      event.quantity,
+      event.proceeds,
+      event.costBasis,
+      event.gainLoss,
+      event.isLongTerm ? 1 : 0,
+      event.holdingDays || 0,
+      event.lotId || null,
+      event.orderId || null,
+      event.botName || null,
+      event.washSale ? 1 : 0,
+      event.washSaleDisallowed || 0,
+      event.form8949Category || null
+    );
+  }
+
+  /**
+   * Get all tax events
+   */
+  getTaxEvents(year = null) {
+    if (year) {
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year}-12-31`;
+      const stmt = this.db.prepare(`
+        SELECT * FROM tax_events 
+        WHERE sale_date >= ? AND sale_date <= ?
+        ORDER BY sale_date ASC
+      `);
+      return stmt.all(yearStart, yearEnd);
+    }
+    const stmt = this.db.prepare(`
+      SELECT * FROM tax_events ORDER BY sale_date ASC
+    `);
+    return stmt.all();
+  }
+
+  /**
+   * Get all trades (for tax processing)
+   */
+  getAllTrades(limit = 100000) {
+    const stmt = this.db.prepare(`
+      SELECT * FROM trades ORDER BY timestamp ASC LIMIT ?
+    `);
+    return stmt.all(limit);
+  }
+
+  /**
+   * Clear all tax data (for reprocessing)
+   */
+  clearTaxData() {
+    this.db.exec('DELETE FROM tax_lots');
+    this.db.exec('DELETE FROM tax_events');
+    console.log('⚠️  All tax data cleared');
   }
 }
 
