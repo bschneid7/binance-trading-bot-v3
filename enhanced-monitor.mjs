@@ -20,10 +20,11 @@ import { retryWithBackoff, CircuitBreaker, ErrorLogger } from './error-handler.m
 import { TrailingStopManager } from './trailing-stop.mjs';
 import { VolatilityGridManager } from './volatility-grid.mjs';
 import { TrendFilter, TREND, TREND_NAMES } from './trend-filter.mjs';
+import { PartialFillHandler } from './partial-fill-handler.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.1.0-ENHANCED';
+const VERSION = '1.2.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -66,6 +67,19 @@ const VOLATILITY_CONFIG = {
   UPDATE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
 };
 
+// Partial fill handling configuration
+const PARTIAL_FILL_CONFIG = {
+  ENABLED: true,
+  // How long to wait before handling a partial fill (minutes)
+  STALE_THRESHOLD_MINUTES: 30,
+  // Minimum fill percentage to consider handling
+  MIN_FILL_PERCENT: 5,
+  // Maximum fill percentage - if almost filled, let it complete
+  MAX_FILL_PERCENT: 95,
+  // How often to check for partial fills (ms)
+  CHECK_INTERVAL: 5 * 60 * 1000,  // 5 minutes
+};
+
 // Trend filter configuration
 const TREND_CONFIG = {
   ENABLED: true,
@@ -87,6 +101,7 @@ export class EnhancedMonitor {
       useNativeWebSocket: true,
       useVolatilityGrid: VOLATILITY_CONFIG.ENABLED,
       useTrendFilter: TREND_CONFIG.ENABLED,
+      usePartialFillHandler: PARTIAL_FILL_CONFIG.ENABLED,
       ...options,
     };
     
@@ -116,6 +131,8 @@ export class EnhancedMonitor {
       totalRebalances: 0,
       wsOrderUpdates: 0,
       syncRepairs: 0,
+      partialFillsHandled: 0,
+      capitalRecovered: 0,
       startTime: new Date(),
     };
     
@@ -143,6 +160,15 @@ export class EnhancedMonitor {
       timeframes: TREND_CONFIG.TIMEFRAMES,
       filterMode: TREND_CONFIG.FILTER_MODE,
     });
+    
+    // Partial fill handler
+    this.partialFillHandler = new PartialFillHandler({
+      staleThresholdMinutes: PARTIAL_FILL_CONFIG.STALE_THRESHOLD_MINUTES,
+      minFillPercentage: PARTIAL_FILL_CONFIG.MIN_FILL_PERCENT,
+      maxFillPercentage: PARTIAL_FILL_CONFIG.MAX_FILL_PERCENT,
+    });
+    this.partialFillTimer = null;
+    this.lastPartialFillCheck = 0;
     
     // Current market analysis
     this.currentVolatility = null;
@@ -242,7 +268,12 @@ export class EnhancedMonitor {
     // 5. Start periodic sync
     this.startPeriodicSync();
     
-    // 6. Setup graceful shutdown
+    // 6. Start partial fill handler
+    if (this.options.usePartialFillHandler) {
+      this.startPartialFillHandler();
+    }
+    
+    // 7. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -252,6 +283,7 @@ export class EnhancedMonitor {
     console.log(`  ✓ Smart grid rebalancing (${this.options.autoRebalance ? 'AUTO' : 'MANUAL'})`);
     console.log(`  ✓ Volatility-based grid spacing (${this.options.useVolatilityGrid ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Multi-timeframe trend filter (${this.options.useTrendFilter ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Partial fill recovery (${this.options.usePartialFillHandler ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -856,6 +888,66 @@ export class EnhancedMonitor {
   }
 
   /**
+   * Start periodic partial fill checking
+   */
+  startPartialFillHandler() {
+    console.log(`🔧 Starting partial fill handler (check every ${PARTIAL_FILL_CONFIG.CHECK_INTERVAL / 1000}s)...`);
+    
+    // Run initial check after a delay
+    setTimeout(() => this.checkPartialFills(), 30000);  // 30 second delay
+    
+    // Start periodic checks
+    this.partialFillTimer = setInterval(async () => {
+      await this.checkPartialFills();
+    }, PARTIAL_FILL_CONFIG.CHECK_INTERVAL);
+  }
+
+  /**
+   * Check for and handle partial fills
+   */
+  async checkPartialFills() {
+    if (!this.options.usePartialFillHandler || this.testMode) {
+      return;
+    }
+    
+    try {
+      const result = await this.partialFillHandler.processPartialFills(
+        this.exchange,
+        this.db,
+        this.botName,
+        this.bot.symbol
+      );
+      
+      if (result.handled > 0) {
+        console.log(`\n🔧 PARTIAL FILL RECOVERY`);
+        console.log(`   Handled: ${result.handled} partial fill(s)`);
+        console.log(`   Capital recovered: $${result.capitalRecovered.toFixed(2)}`);
+        
+        this.stats.partialFillsHandled += result.handled;
+        this.stats.capitalRecovered += result.capitalRecovered;
+        
+        // Place replacement orders for recovered capital
+        for (const r of result.results) {
+          if (r.success && r.trade) {
+            await this.placeReplacementOrder(r.trade);
+          }
+        }
+        
+        // Sync orders after handling partial fills
+        await this.syncOrders();
+      }
+      
+      this.lastPartialFillCheck = Date.now();
+      
+      // Cleanup old entries from handler cache
+      this.partialFillHandler.cleanupCache();
+      
+    } catch (error) {
+      console.error(`❌ Partial fill check error: ${error.message}`);
+    }
+  }
+
+  /**
    * Handle trailing stop triggered
    */
   async handleTrailingStopTriggered(result) {
@@ -996,6 +1088,11 @@ export class EnhancedMonitor {
       this.pendingSyncTimeout = null;
     }
     
+    if (this.partialFillTimer) {
+      clearInterval(this.partialFillTimer);
+      this.partialFillTimer = null;
+    }
+    
     if (this.priceFeed) {
       await this.priceFeed.stop();
       this.priceFeed = null;
@@ -1024,6 +1121,8 @@ export class EnhancedMonitor {
     console.log(`  Total Rebalances: ${this.stats.totalRebalances}`);
     console.log(`  WS Order Updates: ${this.stats.wsOrderUpdates}`);
     console.log(`  Sync Repairs: ${this.stats.syncRepairs}`);
+    console.log(`  Partial Fills Handled: ${this.stats.partialFillsHandled}`);
+    console.log(`  Capital Recovered: $${this.stats.capitalRecovered.toFixed(2)}`);
     console.log(`${'═'.repeat(60)}\n`);
   }
 }
@@ -1043,6 +1142,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     console.log('  --no-ws              Disable native WebSocket (use REST only)');
     console.log('  --no-volatility      Disable volatility-based grid spacing');
     console.log('  --no-trend           Disable multi-timeframe trend filter');
+    console.log('  --no-partial-fill    Disable partial fill recovery');
     console.log('  --sync-interval <ms> Set sync interval in milliseconds (default: 60000)');
     console.log('  --trend-mode <mode>  Set trend filter mode: soft or hard (default: soft)');
     console.log('  --help, -h           Show this help message\n');
@@ -1059,6 +1159,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     useNativeWebSocket: !args.includes('--no-ws'),
     useVolatilityGrid: !args.includes('--no-volatility'),
     useTrendFilter: !args.includes('--no-trend'),
+    usePartialFillHandler: !args.includes('--no-partial-fill'),
     syncInterval: parseInt(args[args.indexOf('--sync-interval') + 1]) || SYNC_CONFIG.SYNC_INTERVAL,
   };
   
