@@ -28,10 +28,11 @@ import { AdaptiveGridManager } from './adaptive-grid.mjs';
 import { FeeTracker } from './fee-tracker.mjs';
 import { SpreadOptimizer } from './spread-optimizer.mjs';
 import { OrderBatcher } from './order-batcher.mjs';
+import { GridTrailer } from './grid-trailer.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.6.0-ENHANCED';
+const VERSION = '1.7.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -153,6 +154,15 @@ const ORDER_BATCHER_CONFIG = {
   MIN_ORDER_INTERVAL_MS: 50,  // Min time between orders
 };
 
+// Proactive grid trailing configuration
+const GRID_TRAILER_CONFIG = {
+  ENABLED: true,
+  TRAIL_THRESHOLD_PERCENT: 5,  // Trigger shift when within 5% of boundary
+  SHIFT_AMOUNT_PERCENT: 15,    // Shift grid by 15% of range
+  TREND_BIAS: 0.6,             // 60% of range in trend direction
+  SHIFT_COOLDOWN_MS: 60 * 60 * 1000,  // 1 hour between shifts
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -174,6 +184,7 @@ export class EnhancedMonitor {
       useFeeTracker: FEE_TRACKER_CONFIG.ENABLED,
       useSpreadOptimizer: SPREAD_OPTIMIZER_CONFIG.ENABLED,
       useOrderBatcher: ORDER_BATCHER_CONFIG.ENABLED,
+      useGridTrailer: GRID_TRAILER_CONFIG.ENABLED,
       ...options,
     };
     
@@ -294,6 +305,15 @@ export class EnhancedMonitor {
       batchDelayMs: ORDER_BATCHER_CONFIG.BATCH_DELAY_MS,
       minOrderIntervalMs: ORDER_BATCHER_CONFIG.MIN_ORDER_INTERVAL_MS,
     });
+    
+    // Grid trailer for proactive range shifting
+    this.gridTrailer = new GridTrailer({
+      TRAIL_THRESHOLD_PERCENT: GRID_TRAILER_CONFIG.TRAIL_THRESHOLD_PERCENT,
+      SHIFT_AMOUNT_PERCENT: GRID_TRAILER_CONFIG.SHIFT_AMOUNT_PERCENT,
+      TREND_BIAS: GRID_TRAILER_CONFIG.TREND_BIAS,
+      SHIFT_COOLDOWN_MS: GRID_TRAILER_CONFIG.SHIFT_COOLDOWN_MS,
+    });
+    this.lastGridShiftCheck = 0;
     
     // Current market analysis
     this.currentVolatility = null;
@@ -431,7 +451,13 @@ export class EnhancedMonitor {
       console.log('📦 Order batcher initialized (optimized batch execution)');
     }
     
-    // 13. Setup graceful shutdown
+    // 13. Initialize grid trailer
+    if (this.options.useGridTrailer) {
+      this.gridTrailer.init(this.bot.lower_price, this.bot.upper_price);
+      console.log('🎯 Grid trailer initialized (proactive range shifting)');
+    }
+    
+    // 14. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -449,6 +475,7 @@ export class EnhancedMonitor {
     console.log(`  ✓ Fee tier tracking (${this.options.useFeeTracker ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Spread-aware orders (${this.options.useSpreadOptimizer ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Smart order batching (${this.options.useOrderBatcher ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Proactive grid trailing (${this.options.useGridTrailer ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -699,6 +726,9 @@ export class EnhancedMonitor {
     
     // Update adaptive grid analysis
     this.maybeUpdateAdaptiveGrid();
+    
+    // Check for proactive grid shift
+    await this.maybeShiftGrid();
     
     // Display stats with market analysis
     const activeOrders = this.db.getActiveOrders(this.botName);
@@ -1494,6 +1524,88 @@ export class EnhancedMonitor {
   }
 
   /**
+   * Check if grid should be proactively shifted
+   */
+  async maybeShiftGrid() {
+    if (!this.options.useGridTrailer || this.testMode) {
+      return;
+    }
+    
+    try {
+      // Check if shift is needed
+      const shiftResult = this.gridTrailer.checkForShift(
+        this.currentPrice,
+        this.bot.lower_price,
+        this.bot.upper_price
+      );
+      
+      if (!shiftResult) {
+        return;
+      }
+      
+      console.log(`\n🎯 PROACTIVE GRID SHIFT DETECTED`);
+      console.log(`   Reason: ${shiftResult.reason}`);
+      console.log(`   Trend: ${shiftResult.trend} (strength: ${(shiftResult.trendStrength * 100).toFixed(0)}%)`);
+      console.log(`   Current range: $${this.bot.lower_price.toFixed(2)} - $${this.bot.upper_price.toFixed(2)}`);
+      console.log(`   Proposed range: $${shiftResult.lower.toFixed(2)} - $${shiftResult.upper.toFixed(2)}`);
+      
+      // Execute the shift
+      await this.executeGridShift(shiftResult.lower, shiftResult.upper);
+      
+      // Record the shift
+      this.gridTrailer.recordShift(
+        this.bot.lower_price,
+        this.bot.upper_price,
+        shiftResult.lower,
+        shiftResult.upper
+      );
+      
+    } catch (error) {
+      console.error(`❌ Grid shift error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Execute a grid shift by updating range and rebalancing
+   */
+  async executeGridShift(newLower, newUpper) {
+    const oldLower = this.bot.lower_price;
+    const oldUpper = this.bot.upper_price;
+    
+    console.log(`\n🔄 EXECUTING GRID SHIFT`);
+    console.log(`   Old: $${oldLower.toFixed(2)} - $${oldUpper.toFixed(2)}`);
+    console.log(`   New: $${newLower.toFixed(2)} - $${newUpper.toFixed(2)}`);
+    
+    // Update database with new range
+    try {
+      this.db.db.prepare(`
+        UPDATE bots SET lower_price = ?, upper_price = ? WHERE name = ?
+      `).run(newLower, newUpper, this.botName);
+      
+      // Update local bot object
+      this.bot.lower_price = newLower;
+      this.bot.upper_price = newUpper;
+      
+      console.log(`   ✅ Database updated`);
+    } catch (error) {
+      console.error(`   ❌ Failed to update database: ${error.message}`);
+      return;
+    }
+    
+    // Trigger a rebalance with the new range
+    const gridStatus = {
+      outsideGrid: false,
+      direction: 'SHIFT',
+      deviation: 0,
+      shouldRebalance: true,
+    };
+    
+    await this.rebalanceGrid(gridStatus);
+    
+    console.log(`   ✅ Grid shift complete`);
+  }
+
+  /**
    * Start spread monitoring for maker order optimization
    */
   startSpreadMonitoring() {
@@ -1819,6 +1931,16 @@ export class EnhancedMonitor {
       }
     }
     
+    // Grid trailing statistics
+    if (this.options.useGridTrailer) {
+      const trailStats = this.gridTrailer.getStats();
+      if (trailStats.shiftCount > 0) {
+        console.log(`  Grid Trailing Stats:`);
+        console.log(`    Total Shifts: ${trailStats.shiftCount}`);
+        console.log(`    Total Movement: $${trailStats.totalShiftAmount.toFixed(2)}`);
+      }
+    }
+    
     console.log(`${'═'.repeat(60)}\n`);
   }
 }
@@ -1846,6 +1968,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     console.log('  --no-fee-tracker     Disable fee tier tracking');
     console.log('  --no-spread-opt      Disable spread-aware order placement');
     console.log('  --no-batching        Disable smart order batching');
+    console.log('  --no-grid-trail      Disable proactive grid trailing');
     console.log('  --sync-interval <ms> Set sync interval in milliseconds (default: 60000)');
     console.log('  --trend-mode <mode>  Set trend filter mode: soft or hard (default: soft)');
     console.log('  --help, -h           Show this help message\n');
@@ -1870,6 +1993,7 @@ Enhanced Grid Bot Monitor v${VERSION}
     useFeeTracker: !args.includes('--no-fee-tracker'),
     useSpreadOptimizer: !args.includes('--no-spread-opt'),
     useOrderBatcher: !args.includes('--no-batching'),
+    useGridTrailer: !args.includes('--no-grid-trail'),
     syncInterval: parseInt(args[args.indexOf('--sync-interval') + 1]) || SYNC_CONFIG.SYNC_INTERVAL,
   };
   
