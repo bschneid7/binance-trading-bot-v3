@@ -2,13 +2,14 @@
 
 /**
  * Grid Trading Bot - Health Check Script
- * Version: 1.0.0
+ * Version: 1.1.0
  * 
  * Verifies bot health by checking:
  * 1. Monitor process status
  * 2. Recent log activity
  * 3. Open orders on Binance.US
  * 4. Database connectivity
+ * 5. DCA Dip Buyer status
  */
 
 import ccxt from 'ccxt';
@@ -31,6 +32,8 @@ const colors = {
   red: '\x1b[31m',
   yellow: '\x1b[33m',
   blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  magenta: '\x1b[35m',
   reset: '\x1b[0m',
   bold: '\x1b[1m'
 };
@@ -83,6 +86,48 @@ function checkProcess(botName) {
   }
   
   return { running: false };
+}
+
+/**
+ * Check systemd service status
+ */
+function checkSystemdService(serviceName) {
+  try {
+    const result = execSync(`systemctl is-active ${serviceName} 2>/dev/null`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    return result.trim() === 'active';
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Get systemd service details
+ */
+function getServiceDetails(serviceName) {
+  try {
+    const result = execSync(`systemctl show ${serviceName} --property=MainPID,ActiveState,SubState,MemoryCurrent 2>/dev/null`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    
+    const props = {};
+    for (const line of result.trim().split('\n')) {
+      const [key, value] = line.split('=');
+      props[key] = value;
+    }
+    
+    return {
+      pid: props.MainPID || 'N/A',
+      state: props.ActiveState || 'unknown',
+      subState: props.SubState || 'unknown',
+      memory: props.MemoryCurrent ? (parseInt(props.MemoryCurrent) / 1024 / 1024).toFixed(1) + ' MB' : 'N/A'
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
@@ -313,6 +358,64 @@ function calculate24hPnL(db, botName) {
 }
 
 /**
+ * Check DCA Dip Buyer status
+ */
+function checkDipBuyer(db) {
+  const result = {
+    serviceRunning: false,
+    serviceDetails: null,
+    positions: [],
+    stats: {
+      totalTrades: 0,
+      totalProfit: 0,
+      openPositions: 0,
+      deployedCapital: 0
+    }
+  };
+  
+  // Check if dip-buyer service is running
+  result.serviceRunning = checkSystemdService('dip-buyer');
+  if (result.serviceRunning) {
+    result.serviceDetails = getServiceDetails('dip-buyer');
+  }
+  
+  // Check for dip_positions table and get data
+  try {
+    // Check if table exists
+    const tableExists = db.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='dip_positions'"
+    ).get();
+    
+    if (tableExists) {
+      // Get open positions
+      const openPositions = db.db.prepare(
+        "SELECT * FROM dip_positions WHERE status = 'open' ORDER BY entry_time DESC"
+      ).all();
+      
+      result.positions = openPositions;
+      result.stats.openPositions = openPositions.length;
+      
+      // Calculate deployed capital
+      for (const pos of openPositions) {
+        result.stats.deployedCapital += pos.entry_price * pos.amount;
+      }
+      
+      // Get closed positions for stats
+      const closedPositions = db.db.prepare(
+        "SELECT * FROM dip_positions WHERE status = 'closed'"
+      ).all();
+      
+      result.stats.totalTrades = closedPositions.length;
+      result.stats.totalProfit = closedPositions.reduce((sum, pos) => sum + (pos.profit || 0), 0);
+    }
+  } catch (e) {
+    // Table doesn't exist yet or other error - that's okay
+  }
+  
+  return result;
+}
+
+/**
  * Run health check for a single bot
  */
 async function checkBotHealth(botName, exchange, db) {
@@ -333,7 +436,7 @@ async function checkBotHealth(botName, exchange, db) {
   if (dbStatus.success) {
     console.log(success(`Bot found in database`));
     console.log(`   Status: ${dbStatus.status === 'running' ? '🟢 Running' : '🔴 Stopped'}`);
-    console.log(`   Orders in DB: ${dbStatus.dbOrders}`);
+    console.log(`   Active Orders in DB: ${dbStatus.dbOrders}`);
     console.log(`   Total Trades: ${dbStatus.totalTrades}`);
     console.log(`   Win Rate: ${dbStatus.winRate}%`);
     console.log(`   Total P&L: $${dbStatus.totalPnL.toFixed(2)}`);
@@ -445,6 +548,71 @@ async function checkBotHealth(botName, exchange, db) {
 }
 
 /**
+ * Display DCA Dip Buyer status
+ */
+function displayDipBuyerStatus(dipBuyerStatus, tickers) {
+  console.log(`\n${header('━'.repeat(60))}`);
+  console.log(header(`  ${colors.magenta}DCA DIP BUYER${colors.reset}`));
+  console.log(`${header('━'.repeat(60))}\n`);
+  
+  // Service status
+  console.log(header('🔄 Service Status:'));
+  if (dipBuyerStatus.serviceRunning) {
+    console.log(success(`Dip Buyer service is running`));
+    if (dipBuyerStatus.serviceDetails) {
+      console.log(`   PID: ${dipBuyerStatus.serviceDetails.pid}`);
+      console.log(`   State: ${dipBuyerStatus.serviceDetails.state} (${dipBuyerStatus.serviceDetails.subState})`);
+      console.log(`   Memory: ${dipBuyerStatus.serviceDetails.memory}`);
+    }
+  } else {
+    console.log(warning(`Dip Buyer service is NOT running`));
+  }
+  
+  // Configuration
+  console.log(`\n${header('⚙️  Configuration:')}`);
+  console.log(`   Dip Threshold: -3.0%`);
+  console.log(`   Order Size: $100`);
+  console.log(`   Take Profit: +2.5%`);
+  console.log(`   Stop Loss: -5.0%`);
+  console.log(`   Max Deployed: $1,000`);
+  
+  // Open positions
+  console.log(`\n${header('📊 Open Positions:')}`);
+  if (dipBuyerStatus.positions.length > 0) {
+    for (const pos of dipBuyerStatus.positions) {
+      const symbol = pos.symbol;
+      const coin = symbol.split('/')[0];
+      const currentPrice = tickers[symbol]?.last || 0;
+      const entryValue = pos.entry_price * pos.amount;
+      const currentValue = currentPrice * pos.amount;
+      const pnl = currentValue - entryValue;
+      const pnlPct = ((currentPrice - pos.entry_price) / pos.entry_price) * 100;
+      
+      const pnlColor = pnl >= 0 ? colors.green : colors.red;
+      const pnlSign = pnl >= 0 ? '+' : '';
+      
+      console.log(`   ${colors.cyan}${symbol}${colors.reset}:`);
+      console.log(`      Amount: ${pos.amount.toFixed(6)} ${coin}`);
+      console.log(`      Entry: $${pos.entry_price.toFixed(2)} | Current: $${currentPrice.toFixed(2)}`);
+      console.log(`      Value: $${entryValue.toFixed(2)} → $${currentValue.toFixed(2)}`);
+      console.log(`      P&L: ${pnlColor}${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)${colors.reset}`);
+      console.log(`      Entry Time: ${pos.entry_time}`);
+    }
+  } else {
+    console.log(info(`No open positions`));
+  }
+  
+  // Statistics
+  console.log(`\n${header('📈 Statistics:')}`);
+  console.log(`   Open Positions: ${dipBuyerStatus.stats.openPositions}`);
+  console.log(`   Capital Deployed: $${dipBuyerStatus.stats.deployedCapital.toFixed(2)}`);
+  console.log(`   Completed Trades: ${dipBuyerStatus.stats.totalTrades}`);
+  const profitColor = dipBuyerStatus.stats.totalProfit >= 0 ? colors.green : colors.red;
+  const profitSign = dipBuyerStatus.stats.totalProfit >= 0 ? '+' : '';
+  console.log(`   Total Profit: ${profitColor}${profitSign}$${dipBuyerStatus.stats.totalProfit.toFixed(2)}${colors.reset}`);
+}
+
+/**
  * Main health check function
  */
 async function runHealthCheck() {
@@ -484,14 +652,15 @@ async function runHealthCheck() {
     return;
   }
   
-  console.log(info(`Found ${bots.length} bot(s) configured`));
+  console.log(info(`Found ${bots.length} grid bot(s) configured`));
   
   // Fetch current balances and prices for equity calculation
   let currentEquity = null;
   let allCoinsEquity = null;
+  let tickers = null;
   try {
     const balance = await exchange.fetchBalance();
-    const tickers = await exchange.fetchTickers(['BTC/USD', 'ETH/USD', 'SOL/USD']);
+    tickers = await exchange.fetchTickers(['BTC/USD', 'ETH/USD', 'SOL/USD']);
     
     // Monitored coins (BTC, ETH, SOL, USD)
     const usdBalance = balance.USD?.total || 0;
@@ -637,6 +806,10 @@ async function runHealthCheck() {
     }
   }
   
+  // Check DCA Dip Buyer status
+  const dipBuyerStatus = checkDipBuyer(db);
+  displayDipBuyerStatus(dipBuyerStatus, tickers || {});
+  
   // Overall summary
   console.log('\n' + '═'.repeat(60));
   console.log(header('       OVERALL SUMMARY'));
@@ -645,16 +818,20 @@ async function runHealthCheck() {
   const healthyBots = results.filter(r => r.healthy && r.issues.length === 0);
   const issueBots = results.filter(r => r.issues.length > 0);
   
-  console.log(`Total Bots: ${bots.length}`);
-  console.log(`${colors.green}Healthy: ${healthyBots.length}${colors.reset}`);
-  console.log(`${colors.red}Issues: ${issueBots.length}${colors.reset}`);
+  // Bot status summary
+  console.log(header('Bot Status:'));
+  console.log(`   Grid Bots: ${bots.length} (${colors.green}${healthyBots.length} healthy${colors.reset}, ${colors.red}${issueBots.length} with issues${colors.reset})`);
+  console.log(`   Dip Buyer: ${dipBuyerStatus.serviceRunning ? `${colors.green}Running${colors.reset}` : `${colors.red}Stopped${colors.reset}`}`);
   
-  // P&L Summary
+  // P&L Summary (including dip buyer)
+  const combinedTotalProfit = totalPnL + dipBuyerStatus.stats.totalProfit;
   console.log(`\n${header('P&L Summary:')}`);  
-  console.log(`   Total P&L (All Time): $${totalPnL.toFixed(2)}`);
+  console.log(`   Grid Bots P&L (All Time): $${totalPnL.toFixed(2)}`);
+  console.log(`   Dip Buyer P&L (All Time): $${dipBuyerStatus.stats.totalProfit.toFixed(2)}`);
+  console.log(`   ${colors.bold}Combined P&L: $${combinedTotalProfit.toFixed(2)}${colors.reset}`);
   const pnl24hColor = total24hPnL >= 0 ? colors.green : colors.red;
   const pnl24hSign = total24hPnL >= 0 ? '+' : '';
-  console.log(`   24h Realized P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
+  console.log(`   24h Grid P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
   
   // Equity Summary
   if (currentEquity) {
