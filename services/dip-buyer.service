@@ -1,0 +1,20 @@
+[Unit]
+Description=DCA Dip Buyer Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/binance-trading-bot-v3
+ExecStart=/usr/bin/node dip-buyer.mjs
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dip-buyer
+
+# Environment
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
