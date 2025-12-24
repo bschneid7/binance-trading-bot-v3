@@ -2176,8 +2176,14 @@ export class EnhancedMonitor {
 
   /**
    * Format symbol from BTCUSD to BTC/USD
+   * If symbol already contains a slash, return as-is
    */
   formatSymbol(symbol) {
+    // If already formatted with slash, return as-is
+    if (symbol.includes('/')) {
+      return symbol;
+    }
+    
     const quotes = ['USD', 'USDT', 'USDC', 'BTC', 'ETH'];
     for (const quote of quotes) {
       if (symbol.endsWith(quote)) {
