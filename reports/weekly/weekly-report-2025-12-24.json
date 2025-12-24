@@ -1,0 +1,169 @@
+{
+  "generatedAt": "2025-12-24T16:34:17.083Z",
+  "period": {
+    "startDate": "2025-12-17",
+    "endDate": "2025-12-24",
+    "startTimestamp": 1765929600000,
+    "endTimestamp": 1766594056874
+  },
+  "sentiment": {
+    "history": [
+      {
+        "date": "2025-12-24",
+        "value": 24,
+        "classification": "Extreme Fear"
+      },
+      {
+        "date": "2025-12-23",
+        "value": 24,
+        "classification": "Extreme Fear"
+      },
+      {
+        "date": "2025-12-22",
+        "value": 25,
+        "classification": "Extreme Fear"
+      },
+      {
+        "date": "2025-12-21",
+        "value": 20,
+        "classification": "Extreme Fear"
+      },
+      {
+        "date": "2025-12-20",
+        "value": 20,
+        "classification": "Extreme Fear"
+      },
+      {
+        "date": "2025-12-19",
+        "value": 16,
+        "classification": "Extreme Fear"
+      },
+      {
+        "date": "2025-12-18",
+        "value": 17,
+        "classification": "Extreme Fear"
+      }
+    ],
+    "avgFearGreed": 20.857142857142858,
+    "extremeFearDays": 7,
+    "extremeGreedDays": 0
+  },
+  "portfolio": {
+    "currentValue": 0,
+    "balance": {
+      "USD": 0,
+      "BTC": 0,
+      "ETH": 0,
+      "SOL": 0
+    },
+    "currentPrices": {
+      "BTC": 87501.22,
+      "ETH": 2947.82,
+      "SOL": 123.2
+    }
+  },
+  "summary": {
+    "totalRealizedProfit": 0,
+    "totalTrades": 0,
+    "totalVolume": 0,
+    "avgWinRate": 0
+  },
+  "symbols": {
+    "BTC": {
+      "symbol": "BTC",
+      "botName": "live-btc-bot",
+      "period": {
+        "startDate": "2025-12-17",
+        "endDate": "2025-12-24",
+        "startTimestamp": 1765929600000,
+        "endTimestamp": 1766594056874
+      },
+      "tradeMetrics": {
+        "totalTrades": 0,
+        "buyTrades": 0,
+        "sellTrades": 0,
+        "totalVolume": 0,
+        "realizedProfit": 0,
+        "avgTradeSize": 0,
+        "winRate": 0,
+        "totalFees": 0
+      },
+      "sentimentImpact": {
+        "tradesInExtremeFear": 0,
+        "tradesInFear": 0,
+        "tradesInNeutral": 0,
+        "tradesInGreed": 0,
+        "tradesInExtremeGreed": 0,
+        "skippedBuysEstimate": 0,
+        "skippedSellsEstimate": 14
+      },
+      "botStats": {},
+      "openOrders": 0,
+      "filledOrders": 0
+    },
+    "ETH": {
+      "symbol": "ETH",
+      "botName": "live-eth-bot",
+      "period": {
+        "startDate": "2025-12-17",
+        "endDate": "2025-12-24",
+        "startTimestamp": 1765929600000,
+        "endTimestamp": 1766594056874
+      },
+      "tradeMetrics": {
+        "totalTrades": 0,
+        "buyTrades": 0,
+        "sellTrades": 0,
+        "totalVolume": 0,
+        "realizedProfit": 0,
+        "avgTradeSize": 0,
+        "winRate": 0,
+        "totalFees": 0
+      },
+      "sentimentImpact": {
+        "tradesInExtremeFear": 0,
+        "tradesInFear": 0,
+        "tradesInNeutral": 0,
+        "tradesInGreed": 0,
+        "tradesInExtremeGreed": 0,
+        "skippedBuysEstimate": 0,
+        "skippedSellsEstimate": 14
+      },
+      "botStats": {},
+      "openOrders": 0,
+      "filledOrders": 0
+    },
+    "SOL": {
+      "symbol": "SOL",
+      "botName": "live-sol-bot",
+      "period": {
+        "startDate": "2025-12-17",
+        "endDate": "2025-12-24",
+        "startTimestamp": 1765929600000,
+        "endTimestamp": 1766594056874
+      },
+      "tradeMetrics": {
+        "totalTrades": 0,
+        "buyTrades": 0,
+        "sellTrades": 0,
+        "totalVolume": 0,
+        "realizedProfit": 0,
+        "avgTradeSize": 0,
+        "winRate": 0,
+        "totalFees": 0
+      },
+      "sentimentImpact": {
+        "tradesInExtremeFear": 0,
+        "tradesInFear": 0,
+        "tradesInNeutral": 0,
+        "tradesInGreed": 0,
+        "tradesInExtremeGreed": 0,
+        "skippedBuysEstimate": 0,
+        "skippedSellsEstimate": 14
+      },
+      "botStats": {},
+      "openOrders": 0,
+      "filledOrders": 0
+    }
+  }
+}
