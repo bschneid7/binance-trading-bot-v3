@@ -1591,7 +1591,35 @@ export class EnhancedMonitor {
     }
     
     try {
-      // Check if shift is needed
+      // FIRST: Check for emergency recovery (price escaped grid entirely)
+      const emergencyResult = this.gridTrailer.checkForEmergencyRecovery(
+        this.currentPrice,
+        this.bot.lower_price,
+        this.bot.upper_price
+      );
+      
+      if (emergencyResult) {
+        console.log(`\n🚨 EMERGENCY GRID RECOVERY TRIGGERED`);
+        console.log(`   Reason: ${emergencyResult.reason}`);
+        console.log(`   Trend: ${emergencyResult.trend} (strength: ${(emergencyResult.trendStrength * 100).toFixed(0)}%)`);
+        console.log(`   Current range: $${this.bot.lower_price.toFixed(2)} - $${this.bot.upper_price.toFixed(2)}`);
+        console.log(`   Recovery range: $${emergencyResult.lower.toFixed(2)} - $${emergencyResult.upper.toFixed(2)}`);
+        
+        // Execute the emergency recovery
+        await this.executeGridShift(emergencyResult.lower, emergencyResult.upper);
+        
+        // Record the emergency recovery
+        this.gridTrailer.recordEmergencyRecovery(
+          this.bot.lower_price,
+          this.bot.upper_price,
+          emergencyResult.lower,
+          emergencyResult.upper
+        );
+        
+        return;
+      }
+      
+      // SECOND: Check for proactive shift (price near boundary)
       const shiftResult = this.gridTrailer.checkForShift(
         this.currentPrice,
         this.bot.lower_price,

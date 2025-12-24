@@ -33,6 +33,16 @@ const TRAIL_CONFIG = {
   
   // Enable/disable logging
   VERBOSE: true,
+  
+  // EMERGENCY RECOVERY SETTINGS
+  // Enable automatic recovery when price escapes grid
+  EMERGENCY_RECOVERY_ENABLED: true,
+  
+  // Cooldown for emergency recovery (shorter than normal shifts)
+  EMERGENCY_COOLDOWN_MS: 5 * 60 * 1000,  // 5 minutes
+  
+  // Default range size for emergency recovery (as % of current price)
+  EMERGENCY_RANGE_PERCENT: 20,
 };
 
 /**
@@ -43,8 +53,10 @@ export class GridTrailer {
     this.config = { ...TRAIL_CONFIG, ...options };
     this.priceHistory = [];
     this.lastShiftTime = 0;
+    this.lastEmergencyRecoveryTime = 0;
     this.originalRange = null;
     this.shiftCount = 0;
+    this.emergencyRecoveryCount = 0;
     this.totalShiftAmount = 0;
   }
   
@@ -271,6 +283,115 @@ export class GridTrailer {
   }
   
   /**
+   * Check if price has escaped the grid entirely (emergency situation)
+   * Returns recovery info if needed, null otherwise
+   */
+  checkForEmergencyRecovery(currentPrice, currentLower, currentUpper) {
+    if (!this.config.EMERGENCY_RECOVERY_ENABLED) {
+      return null;
+    }
+    
+    // Check if price is outside grid
+    const isAboveGrid = currentPrice > currentUpper;
+    const isBelowGrid = currentPrice < currentLower;
+    
+    if (!isAboveGrid && !isBelowGrid) {
+      return null;  // Price is within grid, no emergency
+    }
+    
+    // Check emergency cooldown
+    const timeSinceLastRecovery = Date.now() - this.lastEmergencyRecoveryTime;
+    if (timeSinceLastRecovery < this.config.EMERGENCY_COOLDOWN_MS) {
+      if (this.config.VERBOSE) {
+        const remaining = Math.round((this.config.EMERGENCY_COOLDOWN_MS - timeSinceLastRecovery) / 1000);
+        console.log(`⏳ Emergency recovery cooldown: ${remaining}s remaining`);
+      }
+      return null;
+    }
+    
+    // Calculate escape percentage
+    const rangeSize = currentUpper - currentLower;
+    let escapePercent;
+    let direction;
+    
+    if (isAboveGrid) {
+      escapePercent = ((currentPrice - currentUpper) / rangeSize) * 100;
+      direction = 'above';
+    } else {
+      escapePercent = ((currentLower - currentPrice) / rangeSize) * 100;
+      direction = 'below';
+    }
+    
+    // Detect trend for bias
+    const trend = this.detectTrend();
+    const trendStrength = this.getTrendStrength();
+    
+    // Calculate new range centered on current price
+    const newRangeSize = currentPrice * (this.config.EMERGENCY_RANGE_PERCENT / 100);
+    let newLower, newUpper;
+    
+    // Apply trend bias if available
+    if (direction === 'above' && trend === 'up') {
+      // Uptrend - extend more above
+      const bias = this.config.TREND_BIAS;
+      newUpper = currentPrice + (newRangeSize * bias);
+      newLower = currentPrice - (newRangeSize * (1 - bias));
+    } else if (direction === 'below' && trend === 'down') {
+      // Downtrend - extend more below
+      const bias = this.config.TREND_BIAS;
+      newLower = currentPrice - (newRangeSize * bias);
+      newUpper = currentPrice + (newRangeSize * (1 - bias));
+    } else {
+      // Neutral - center on current price
+      newLower = currentPrice - (newRangeSize / 2);
+      newUpper = currentPrice + (newRangeSize / 2);
+    }
+    
+    // Ensure valid range
+    newLower = Math.max(newLower, currentPrice * 0.5);  // Don't go below 50% of price
+    newUpper = Math.max(newUpper, newLower + (currentPrice * 0.1));  // Min 10% range
+    
+    const reason = `EMERGENCY: Price $${currentPrice.toFixed(2)} escaped ${direction} grid ` +
+                   `($${currentLower.toFixed(2)} - $${currentUpper.toFixed(2)}) by ${escapePercent.toFixed(1)}%`;
+    
+    if (this.config.VERBOSE) {
+      console.log(`\n🚨 ${reason}`);
+      console.log(`   Trend: ${trend} (strength: ${(trendStrength * 100).toFixed(0)}%)`);
+      console.log(`   Proposed recovery range: $${newLower.toFixed(2)} - $${newUpper.toFixed(2)}`);
+    }
+    
+    return {
+      lower: Math.round(newLower * 100) / 100,
+      upper: Math.round(newUpper * 100) / 100,
+      reason,
+      isEmergency: true,
+      direction,
+      escapePercent,
+      trend,
+      trendStrength,
+    };
+  }
+  
+  /**
+   * Record that an emergency recovery was executed
+   */
+  recordEmergencyRecovery(oldLower, oldUpper, newLower, newUpper) {
+    this.lastEmergencyRecoveryTime = Date.now();
+    this.emergencyRecoveryCount++;
+    
+    const shiftAmount = Math.abs((newLower + newUpper) / 2 - (oldLower + oldUpper) / 2);
+    this.totalShiftAmount += shiftAmount;
+    
+    if (this.config.VERBOSE) {
+      console.log(`\n🚨 EMERGENCY GRID RECOVERY EXECUTED (#${this.emergencyRecoveryCount})`);
+      console.log(`   Old range: $${oldLower.toFixed(2)} - $${oldUpper.toFixed(2)}`);
+      console.log(`   New range: $${newLower.toFixed(2)} - $${newUpper.toFixed(2)}`);
+      console.log(`   Shift: $${shiftAmount.toFixed(2)}`);
+      console.log(`   Total recoveries: ${this.emergencyRecoveryCount}\n`);
+    }
+  }
+  
+  /**
    * Get current status
    */
   getStatus() {
@@ -300,6 +421,7 @@ export class GridTrailer {
   getStats() {
     return {
       shiftCount: this.shiftCount,
+      emergencyRecoveryCount: this.emergencyRecoveryCount,
       totalShiftAmount: this.totalShiftAmount,
       originalRange: this.originalRange,
     };
