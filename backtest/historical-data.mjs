@@ -2,13 +2,15 @@
 
 /**
  * Historical Data Fetcher
- * Version: 1.0.0
+ * Version: 1.1.0
  * 
- * Fetches and caches historical OHLCV data from Binance.US
+ * Fetches and caches historical OHLCV data from CryptoCompare
  * for backtesting purposes.
+ * 
+ * Note: Uses CryptoCompare instead of Binance.US because Binance.US
+ * has limited historical data availability.
  */
 
-import ccxt from 'ccxt';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,6 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const CACHE_DIR = path.join(__dirname, 'data');
+const CRYPTOCOMPARE_API = 'https://min-api.cryptocompare.com/data/v2';
 
 /**
  * Ensure cache directory exists
@@ -36,73 +39,51 @@ function getCacheFilename(symbol, timeframe, startDate, endDate) {
 }
 
 /**
+ * Convert timeframe to CryptoCompare endpoint
+ */
+function getTimeframeEndpoint(timeframe) {
+  const map = {
+    '1m': { endpoint: 'histominute', seconds: 60 },
+    '5m': { endpoint: 'histominute', seconds: 300 },
+    '15m': { endpoint: 'histominute', seconds: 900 },
+    '30m': { endpoint: 'histominute', seconds: 1800 },
+    '1h': { endpoint: 'histohour', seconds: 3600 },
+    '2h': { endpoint: 'histohour', seconds: 7200 },
+    '4h': { endpoint: 'histohour', seconds: 14400 },
+    '1d': { endpoint: 'histoday', seconds: 86400 },
+    '1w': { endpoint: 'histoday', seconds: 604800 }
+  };
+  return map[timeframe] || { endpoint: 'histohour', seconds: 3600 };
+}
+
+/**
  * Historical Data Fetcher Class
  */
 export class HistoricalDataFetcher {
   constructor(options = {}) {
-    this.exchange = new ccxt.binanceus({
-      enableRateLimit: true,
-      ...options
-    });
-    
+    this.apiKey = options.apiKey || null;
     this.maxRetries = 3;
     this.retryDelay = 1000;
-    this.marketsLoaded = false;
   }
 
   /**
-   * Load markets if not already loaded
+   * Parse symbol into base and quote currencies
    */
-  async loadMarkets() {
-    if (!this.marketsLoaded) {
-      console.log('📊 Loading exchange markets...');
-      await this.exchange.loadMarkets();
-      this.marketsLoaded = true;
+  parseSymbol(symbol) {
+    // Handle formats: BTC/USD, BTCUSD, BTC-USD
+    const cleaned = symbol.replace('-', '/');
+    if (cleaned.includes('/')) {
+      const [base, quote] = cleaned.split('/');
+      return { base: base.toUpperCase(), quote: quote.toUpperCase() };
     }
-  }
-
-  /**
-   * Find the correct symbol format for the exchange
-   */
-  findSymbol(inputSymbol) {
-    // Try exact match first
-    if (this.exchange.markets[inputSymbol]) {
-      return inputSymbol;
+    // Assume last 3-4 chars are quote currency
+    if (cleaned.endsWith('USDT')) {
+      return { base: cleaned.slice(0, -4), quote: 'USDT' };
     }
-    
-    // Parse the input symbol
-    const [base, quote] = inputSymbol.split('/');
-    
-    // Build list of variations to try
-    const variations = [
-      inputSymbol,                           // BTC/USD (exact)
-      `${base}/USDT`,                        // BTC/USDT
-      `${base}/USDC`,                        // BTC/USDC
-      `${base}/BUSD`,                        // BTC/BUSD
-      inputSymbol.replace('/', ''),          // BTCUSD
-    ];
-    
-    console.log(`   Looking for symbol variations: ${variations.join(', ')}`);
-    
-    for (const variation of variations) {
-      if (this.exchange.markets[variation]) {
-        console.log(`   ✓ Found: ${variation}`);
-        return variation;
-      }
+    if (cleaned.endsWith('USD')) {
+      return { base: cleaned.slice(0, -3), quote: 'USD' };
     }
-    
-    // Search by base currency
-    console.log(`   Searching by base currency: ${base}`);
-    for (const marketId of Object.keys(this.exchange.markets)) {
-      const market = this.exchange.markets[marketId];
-      if (market.base === base) {
-        console.log(`   ✓ Found by base: ${marketId}`);
-        return marketId;
-      }
-    }
-    
-    console.log(`   ✗ No match found, using original: ${inputSymbol}`);
-    return inputSymbol;  // Return original if nothing found
+    return { base: cleaned, quote: 'USD' };
   }
 
   /**
@@ -125,43 +106,71 @@ export class HistoricalDataFetcher {
       return cached;
     }
     
-    // Load markets to find correct symbol format
-    await this.loadMarkets();
-    const exchangeSymbol = this.findSymbol(symbol);
+    const { base, quote } = this.parseSymbol(symbol);
+    const tfConfig = getTimeframeEndpoint(timeframe);
     
-    if (exchangeSymbol !== symbol) {
-      console.log(`🔄 Using exchange symbol: ${exchangeSymbol} (requested: ${symbol})`);
-    }
+    console.log(`📡 Fetching ${base}/${quote} ${timeframe} data from ${startDate} to ${endDate}...`);
+    console.log(`   Using CryptoCompare API (${tfConfig.endpoint})`);
     
-    console.log(`📡 Fetching ${exchangeSymbol} ${timeframe} data from ${startDate} to ${endDate}...`);
-    
-    const startTimestamp = new Date(startDate).getTime();
-    const endTimestamp = new Date(endDate).getTime();
+    const startTimestamp = Math.floor(new Date(startDate).getTime() / 1000);
+    const endTimestamp = Math.floor(new Date(endDate).getTime() / 1000);
     
     let allCandles = [];
-    let since = startTimestamp;
+    let toTs = endTimestamp;
     let fetchCount = 0;
+    const maxCandles = 2000;  // CryptoCompare limit per request
     
-    while (since < endTimestamp) {
+    while (toTs > startTimestamp) {
       try {
-        const candles = await this.exchange.fetchOHLCV(exchangeSymbol, timeframe, since, 1000);
+        const url = `${CRYPTOCOMPARE_API}/${tfConfig.endpoint}?fsym=${base}&tsym=${quote}&limit=${maxCandles}&toTs=${toTs}`;
         
-        if (candles.length === 0) break;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.Response === 'Error') {
+          console.error(`\n❌ API Error: ${data.Message}`);
+          break;
+        }
+        
+        if (!data.Data || !data.Data.Data || data.Data.Data.length === 0) {
+          break;
+        }
+        
+        const candles = data.Data.Data;
         
         // Filter candles within date range
-        const filteredCandles = candles.filter(c => c[0] >= startTimestamp && c[0] <= endTimestamp);
-        allCandles = allCandles.concat(filteredCandles);
+        const filteredCandles = candles.filter(c => 
+          c.time >= startTimestamp && c.time <= endTimestamp
+        );
         
-        // Move to next batch
-        since = candles[candles.length - 1][0] + 1;
+        // Convert to standard format and prepend (since we're going backwards)
+        const formattedCandles = filteredCandles.map(c => ({
+          timestamp: c.time * 1000,
+          date: new Date(c.time * 1000).toISOString(),
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volumefrom
+        }));
+        
+        allCandles = [...formattedCandles, ...allCandles];
+        
+        // Move to earlier time period
+        toTs = candles[0].time - 1;
         fetchCount++;
         
         // Progress indicator
-        const progress = Math.min(100, ((since - startTimestamp) / (endTimestamp - startTimestamp) * 100)).toFixed(1);
+        const progress = Math.min(100, ((endTimestamp - toTs) / (endTimestamp - startTimestamp) * 100)).toFixed(1);
         process.stdout.write(`\r   Progress: ${progress}% (${allCandles.length} candles)`);
         
         // Rate limiting
-        await this.sleep(100);
+        await this.sleep(250);
+        
+        // Safety check - if we got less than expected, we've reached the end
+        if (candles.length < maxCandles) {
+          break;
+        }
         
       } catch (error) {
         console.error(`\n❌ Error fetching data: ${error.message}`);
@@ -169,29 +178,35 @@ export class HistoricalDataFetcher {
       }
     }
     
+    // Sort by timestamp ascending
+    allCandles.sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Remove duplicates
+    const seen = new Set();
+    allCandles = allCandles.filter(c => {
+      if (seen.has(c.timestamp)) return false;
+      seen.add(c.timestamp);
+      return true;
+    });
+    
     console.log(`\n✅ Fetched ${allCandles.length} candles`);
     
     // Format data
     const formattedData = {
-      symbol,
+      symbol: `${base}/${quote}`,
       timeframe,
       startDate,
       endDate,
       fetchedAt: new Date().toISOString(),
-      candles: allCandles.map(c => ({
-        timestamp: c[0],
-        date: new Date(c[0]).toISOString(),
-        open: c[1],
-        high: c[2],
-        low: c[3],
-        close: c[4],
-        volume: c[5]
-      }))
+      source: 'CryptoCompare',
+      candles: allCandles
     };
     
     // Cache data
-    fs.writeFileSync(cacheFile, JSON.stringify(formattedData, null, 2));
-    console.log(`💾 Cached data to ${path.basename(cacheFile)}`);
+    if (allCandles.length > 0) {
+      fs.writeFileSync(cacheFile, JSON.stringify(formattedData, null, 2));
+      console.log(`💾 Cached data to ${path.basename(cacheFile)}`);
+    }
     
     return formattedData;
   }
