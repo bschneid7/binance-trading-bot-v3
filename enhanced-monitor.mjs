@@ -30,10 +30,12 @@ import { SpreadOptimizer } from './spread-optimizer.mjs';
 import { OrderBatcher } from './order-batcher.mjs';
 import { GridTrailer } from './grid-trailer.mjs';
 import { SentimentIntegration } from './sentiment-integration.mjs';
+import { VERSION } from './config.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.7.0-ENHANCED';
+// Use centralized version from config.mjs
+const MONITOR_VERSION = `${VERSION.enhancedMonitor}-ENHANCED`;
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -389,7 +391,7 @@ export class EnhancedMonitor {
     }
     
     console.log(`\n${'═'.repeat(60)}`);
-    console.log(`  ENHANCED GRID BOT MONITOR v${VERSION}`);
+    console.log(`  ENHANCED GRID BOT MONITOR v${MONITOR_VERSION}`);
     console.log(`${'═'.repeat(60)}`);
     console.log(`  Bot: ${this.botName}`);
     console.log(`  Symbol: ${this.bot.symbol}`);
@@ -2140,7 +2142,7 @@ async function main() {
   
   if (!botName || args.includes('--help') || args.includes('-h')) {
     console.log(`
-Enhanced Grid Bot Monitor v${VERSION}
+Enhanced Grid Bot Monitor v${MONITOR_VERSION}
 `);
     console.log('Usage: node enhanced-monitor.mjs <bot-name> [options]\n');
     console.log('Options:');

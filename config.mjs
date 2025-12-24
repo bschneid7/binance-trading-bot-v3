@@ -250,9 +250,21 @@ export const PATHS = {
  * Version Information
  */
 export const VERSION = {
-  bot: '5.1.0',
+  // Core version - increment on major releases
+  core: '5.2.0',
+  
+  // Component versions
+  enhancedMonitor: '1.7.0',
+  gridBotCli: '5.2.0',
   config: '1.0.0',
-  minNodeVersion: '18.0.0'
+  
+  // Requirements
+  minNodeVersion: '18.0.0',
+  
+  // Helper to get display string
+  getDisplayVersion(component = 'core') {
+    return this[component] || this.core;
+  }
 };
 
 /**

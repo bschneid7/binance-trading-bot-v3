@@ -33,6 +33,7 @@ import dotenv from 'dotenv';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { VERSION } from './config.mjs';
 
 // Load environment
 dotenv.config({ path: '.env.production' });
@@ -40,8 +41,8 @@ dotenv.config({ path: '.env.production' });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Version
-const VERSION = '4.2.2-MONITOR-FIX';
+// Use centralized version from config.mjs (legacy CLI)
+const CLI_VERSION = `${VERSION.core}-LEGACY`;
 
 // Database files
 const DB_DIR = join(__dirname, 'data');
@@ -679,7 +680,7 @@ async function createBot(args) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       rebalance_count: 0,
-      version: VERSION,
+      version: CLI_VERSION,
     };
 
     bots.push(bot);
@@ -1053,7 +1054,7 @@ async function showStatus() {
     console.log(`   Max Risk/Trade: ${(RISK_CONFIG.MAX_RISK_PER_TRADE * 100).toFixed(0)}%`);
     console.log();
     console.log('📦 Version:');
-    console.log(`   CLI: ${VERSION} (Enhanced)`);
+    console.log(`   CLI: ${CLI_VERSION}`);
     console.log(`   Features: Stop-loss, Adaptive grids, Dynamic sizing, Order execution`);
     console.log();
     console.log('═'.repeat(80));
@@ -1561,7 +1562,7 @@ async function main() {
     case '--help':
     case '-h':
       console.log(`
-Grid Trading Bot CLI - Version ${VERSION}
+Grid Trading Bot CLI - Version ${CLI_VERSION}
 
 Usage: grid-bot-cli <command> [options]
 

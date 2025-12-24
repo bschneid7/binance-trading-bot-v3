@@ -29,6 +29,7 @@ import { getDatabase, closeDatabase } from './database.mjs';
 import { WebSocketPriceFeed, createWebSocketExchange } from './websocket-feed.mjs';
 import { retryWithBackoff, classifyError, ErrorLogger, CircuitBreaker } from './error-handler.mjs';
 import { TrailingStopManager } from './trailing-stop.mjs';
+import { VERSION } from './config.mjs';
 
 // Load environment
 dotenv.config({ path: '.env.production' });
@@ -36,8 +37,8 @@ dotenv.config({ path: '.env.production' });
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Version
-const VERSION = '5.2.0-TRAILING-STOP';
+// Use centralized version from config.mjs
+const CLI_VERSION = `${VERSION.gridBotCli}-TRAILING-STOP`;
 
 // Initialize trailing stop manager
 const trailingStopManager = new TrailingStopManager();
@@ -383,7 +384,7 @@ async function createBot(args) {
       adjusted_grid_count: adjustedGridCount,
       order_size: size,
       status: 'stopped',
-      version: VERSION,
+      version: CLI_VERSION,
     });
 
     console.log(`✅ Bot "${name}" created successfully!`);
@@ -947,7 +948,7 @@ async function main() {
     case '--help':
     case '-h':
       console.log(`
-Grid Trading Bot CLI - Version ${VERSION}
+Grid Trading Bot CLI - Version ${CLI_VERSION}
 
 Usage: node grid-bot-cli-v5.mjs <command> [options]
 
