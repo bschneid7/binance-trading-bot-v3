@@ -29,6 +29,7 @@ import { FeeTracker } from './fee-tracker.mjs';
 import { SpreadOptimizer } from './spread-optimizer.mjs';
 import { OrderBatcher } from './order-batcher.mjs';
 import { GridTrailer } from './grid-trailer.mjs';
+import { SentimentIntegration } from './sentiment-integration.mjs';
 
 dotenv.config({ path: '.env.production' });
 
@@ -163,6 +164,30 @@ const GRID_TRAILER_CONFIG = {
   SHIFT_COOLDOWN_MS: 60 * 60 * 1000,  // 1 hour between shifts
 };
 
+// Sentiment analysis configuration
+const SENTIMENT_CONFIG = {
+  ENABLED: true,
+  UPDATE_INTERVAL: 15 * 60 * 1000,  // 15 minutes
+  // Position sizing adjustments based on sentiment
+  POSITION_SIZING: {
+    ENABLED: true,
+    MIN_MULTIPLIER: 0.5,
+    MAX_MULTIPLIER: 1.5,
+  },
+  // Grid spacing adjustments
+  GRID_SPACING: {
+    ENABLED: true,
+    MIN_MULTIPLIER: 0.8,
+    MAX_MULTIPLIER: 1.2,
+  },
+  // Order placement controls
+  ORDER_PLACEMENT: {
+    ENABLED: true,
+    SKIP_BUYS_ABOVE_SCORE: 80,   // Skip buys in extreme greed
+    SKIP_SELLS_BELOW_SCORE: 20,  // Skip sells in extreme fear
+  },
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -185,6 +210,7 @@ export class EnhancedMonitor {
       useSpreadOptimizer: SPREAD_OPTIMIZER_CONFIG.ENABLED,
       useOrderBatcher: ORDER_BATCHER_CONFIG.ENABLED,
       useGridTrailer: GRID_TRAILER_CONFIG.ENABLED,
+      useSentiment: SENTIMENT_CONFIG.ENABLED,
       ...options,
     };
     
@@ -314,6 +340,11 @@ export class EnhancedMonitor {
       SHIFT_COOLDOWN_MS: GRID_TRAILER_CONFIG.SHIFT_COOLDOWN_MS,
     });
     this.lastGridShiftCheck = 0;
+    
+    // Sentiment integration
+    this.sentimentIntegration = null;
+    this.currentSentiment = null;
+    this.lastSentimentUpdate = 0;
     
     // Current market analysis
     this.currentVolatility = null;
@@ -457,7 +488,12 @@ export class EnhancedMonitor {
       console.log('🎯 Grid trailer initialized (proactive range shifting)');
     }
     
-    // 14. Setup graceful shutdown
+    // 14. Initialize sentiment analysis
+    if (this.options.useSentiment) {
+      await this.initSentiment();
+    }
+    
+    // 15. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -476,6 +512,7 @@ export class EnhancedMonitor {
     console.log(`  ✓ Spread-aware orders (${this.options.useSpreadOptimizer ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Smart order batching (${this.options.useOrderBatcher ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Proactive grid trailing (${this.options.useGridTrailer ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Sentiment analysis (${this.options.useSentiment ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -1094,6 +1131,14 @@ export class EnhancedMonitor {
       }
     }
     
+    // Check sentiment filter before placing order
+    if (this.options.useSentiment && !this.shouldPlaceOrderBySentiment(oppositeSide)) {
+      const symbol = this.bot.symbol.replace('USDT', '').replace('USD', '');
+      const rec = this.sentimentIntegration?.getRecommendation(symbol);
+      console.log(`   🚫 Sentiment filter blocked ${oppositeSide.toUpperCase()}: Score ${rec?.score}/100`);
+      return;
+    }
+    
     try {
       if (this.testMode) {
         const orderId = `${this.botName}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1499,6 +1544,13 @@ export class EnhancedMonitor {
       multiplier *= this.currentAdaptiveAnalysis.gridMultiplier;
     }
     
+    // Sentiment-based adjustment (tighter grids in extreme sentiment)
+    if (this.options.useSentiment && this.sentimentIntegration) {
+      const symbol = this.bot.symbol.replace('USDT', '').replace('USD', '');
+      const sentimentMultiplier = this.sentimentIntegration.getGridSpacingMultiplier(symbol);
+      multiplier *= sentimentMultiplier;
+    }
+    
     // Clamp to reasonable range
     return Math.max(0.3, Math.min(3.0, multiplier));
   }
@@ -1517,6 +1569,13 @@ export class EnhancedMonitor {
     // Correlation risk adjustment
     if (this.options.useCorrelationRisk && this.currentCorrelationAnalysis) {
       multiplier *= this.currentCorrelationAnalysis.overallMultiplier;
+    }
+    
+    // Sentiment-based adjustment
+    if (this.options.useSentiment && this.sentimentIntegration) {
+      const symbol = this.bot.symbol.replace('USDT', '').replace('USD', '');
+      const sentimentMultiplier = this.sentimentIntegration.getPositionSizeMultiplier(symbol);
+      multiplier *= sentimentMultiplier;
     }
     
     // Clamp to reasonable range
@@ -1728,6 +1787,92 @@ export class EnhancedMonitor {
   }
 
   /**
+   * Initialize sentiment analysis integration
+   */
+  async initSentiment() {
+    try {
+      console.log('🧠 Initializing sentiment analysis...');
+      
+      this.sentimentIntegration = new SentimentIntegration({
+        ENABLED: SENTIMENT_CONFIG.ENABLED,
+        UPDATE_INTERVAL: SENTIMENT_CONFIG.UPDATE_INTERVAL,
+        POSITION_SIZING: SENTIMENT_CONFIG.POSITION_SIZING,
+        GRID_SPACING: SENTIMENT_CONFIG.GRID_SPACING,
+        ORDER_PLACEMENT: SENTIMENT_CONFIG.ORDER_PLACEMENT,
+      });
+      
+      // Register callbacks for sentiment alerts
+      this.sentimentIntegration.on('onExtremeAlert', (alert) => {
+        console.log(`\n${alert.message}`);
+      });
+      
+      this.sentimentIntegration.on('onSignificantChange', (change) => {
+        console.log(`\n${change.message}`);
+      });
+      
+      await this.sentimentIntegration.init();
+      
+      // Store initial sentiment
+      this.currentSentiment = this.sentimentIntegration.getSummary();
+      this.lastSentimentUpdate = Date.now();
+      
+      // Log initial sentiment for the bot's symbol
+      const symbol = this.bot.symbol.replace('USDT', '').replace('USD', '');
+      const rec = this.sentimentIntegration.getRecommendation(symbol);
+      
+      console.log(`   ${symbol} Sentiment: ${rec.score}/100`);
+      console.log(`   Signal: ${rec.action} (${rec.confidence} confidence)`);
+      console.log(`   Position Multiplier: ${(rec.positionMultiplier * 100).toFixed(0)}%`);
+      console.log(`   Grid Multiplier: ${(rec.gridMultiplier * 100).toFixed(0)}%`);
+      
+    } catch (error) {
+      console.error(`❌ Failed to initialize sentiment: ${error.message}`);
+      this.sentimentIntegration = null;
+    }
+  }
+  
+  /**
+   * Update sentiment data
+   */
+  async updateSentiment() {
+    if (!this.sentimentIntegration) return;
+    
+    const timeSinceUpdate = Date.now() - this.lastSentimentUpdate;
+    if (timeSinceUpdate < SENTIMENT_CONFIG.UPDATE_INTERVAL) return;
+    
+    try {
+      await this.sentimentIntegration.update();
+      this.currentSentiment = this.sentimentIntegration.getSummary();
+      this.lastSentimentUpdate = Date.now();
+      
+      // Log update
+      const symbol = this.bot.symbol.replace('USDT', '').replace('USD', '');
+      const rec = this.sentimentIntegration.getRecommendation(symbol);
+      console.log(`\n🧠 Sentiment Update: ${symbol} ${rec.score}/100 (${rec.action})`);
+      
+    } catch (error) {
+      console.error(`❌ Sentiment update failed: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Check if order should be placed based on sentiment
+   */
+  shouldPlaceOrderBySentiment(side) {
+    if (!this.options.useSentiment || !this.sentimentIntegration) {
+      return true;
+    }
+    
+    const symbol = this.bot.symbol.replace('USDT', '').replace('USD', '');
+    
+    if (side === 'buy') {
+      return this.sentimentIntegration.shouldPlaceBuyOrders(symbol);
+    } else {
+      return this.sentimentIntegration.shouldPlaceSellOrders(symbol);
+    }
+  }
+
+  /**
    * Handle trailing stop triggered
    */
   async handleTrailingStopTriggered(result) {
@@ -1887,6 +2032,12 @@ export class EnhancedMonitor {
       this.userDataWs.close();
       this.userDataWs = null;
     }
+    
+    // Stop sentiment integration
+    if (this.sentimentIntegration) {
+      this.sentimentIntegration.stop();
+      this.sentimentIntegration = null;
+    }
   }
 
   /**
@@ -1941,7 +2092,16 @@ export class EnhancedMonitor {
       }
     }
     
-    console.log(`${'═'.repeat(60)}\n`);
+    // Sentiment statistics
+    if (this.options.useSentiment && this.currentSentiment) {
+      console.log(`  Sentiment Stats:`);
+      console.log(`    Fear & Greed: ${this.currentSentiment.fearGreed?.value || 'N/A'}`);
+      for (const [symbol, data] of Object.entries(this.currentSentiment.scores || {})) {
+        console.log(`    ${symbol} Composite: ${data.composite}/100 (${data.signal?.action || 'N/A'})`);
+      }
+    }
+    
+    console.log(`${'='.repeat(60)}\n`);
   }
 }
 

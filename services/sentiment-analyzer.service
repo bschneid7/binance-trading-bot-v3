@@ -1,0 +1,18 @@
+[Unit]
+Description=Crypto Sentiment Analyzer v1.0.0
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ubuntu/binance-trading-bot-v3
+ExecStart=/usr/bin/node /home/ubuntu/binance-trading-bot-v3/sentiment-integration.mjs
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/ubuntu/binance-trading-bot-v3/logs/sentiment-analyzer.log
+StandardError=append:/home/ubuntu/binance-trading-bot-v3/logs/sentiment-analyzer.log
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

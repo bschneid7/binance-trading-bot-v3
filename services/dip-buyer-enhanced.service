@@ -1,0 +1,18 @@
+[Unit]
+Description=Enhanced DCA Dip Buyer v2.0 - Aggressive Flash Crash Accumulation
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ubuntu/binance-trading-bot-v3
+ExecStart=/usr/bin/node /home/ubuntu/binance-trading-bot-v3/dip-buyer-enhanced.mjs
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/ubuntu/binance-trading-bot-v3/logs/dip-buyer-enhanced.log
+StandardError=append:/home/ubuntu/binance-trading-bot-v3/logs/dip-buyer-enhanced.log
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

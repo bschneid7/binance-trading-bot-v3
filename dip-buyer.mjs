@@ -7,6 +7,7 @@
 import 'dotenv/config';
 import ccxt from 'ccxt';
 import { getDatabase } from './database.mjs';
+import { SentimentIntegration } from './sentiment-integration.mjs';
 
 // Configuration
 const DIP_CONFIG = {
@@ -32,6 +33,10 @@ const DIP_CONFIG = {
   
   // Reserve protection
   MIN_USD_RESERVE: 1200,      // Always keep this much USD for grid operations
+  
+  // Sentiment integration
+  USE_SENTIMENT: true,        // Enable sentiment-based adjustments
+  SENTIMENT_UPDATE_INTERVAL: 15 * 60 * 1000, // 15 minutes
 };
 
 export class DipBuyer {
@@ -48,8 +53,13 @@ export class DipBuyer {
       sellOrders: 0,
       totalProfit: 0,
       totalDeployed: 0,
+      sentimentAdjustedBuys: 0,
     };
     this.running = false;
+    
+    // Sentiment integration
+    this.sentimentIntegration = null;
+    this.lastSentimentUpdate = 0;
   }
   
   async init() {
@@ -76,6 +86,71 @@ export class DipBuyer {
     console.log(`   Order size: $${this.config.ORDER_SIZE_USD}`);
     console.log(`   Take profit: ${this.config.TAKE_PROFIT_PCT}%`);
     console.log(`   Stop loss: ${this.config.STOP_LOSS_PCT}%`);
+    
+    // Initialize sentiment integration
+    if (this.config.USE_SENTIMENT) {
+      await this.initSentiment();
+    }
+  }
+  
+  async initSentiment() {
+    try {
+      console.log('\n🧠 Initializing sentiment analysis for Dip Buyer...');
+      
+      this.sentimentIntegration = new SentimentIntegration({
+        ENABLED: true,
+        UPDATE_INTERVAL: this.config.SENTIMENT_UPDATE_INTERVAL,
+      });
+      
+      await this.sentimentIntegration.init();
+      this.lastSentimentUpdate = Date.now();
+      
+      // Log initial sentiment
+      const summary = this.sentimentIntegration.getSummary();
+      console.log(`   Fear & Greed: ${summary.fearGreed?.value || 'N/A'} (${summary.fearGreed?.classification || 'N/A'})`);
+      
+      for (const symbol of this.config.SYMBOLS) {
+        const baseSymbol = symbol.split('/')[0];
+        const rec = this.sentimentIntegration.getRecommendation(baseSymbol);
+        console.log(`   ${baseSymbol}: ${rec.score}/100 - Dip Buyer Multiplier: ${(rec.dipBuyerMultiplier * 100).toFixed(0)}%`);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to initialize sentiment: ${error.message}`);
+      this.sentimentIntegration = null;
+    }
+  }
+  
+  async updateSentiment() {
+    if (!this.sentimentIntegration) return;
+    
+    const timeSinceUpdate = Date.now() - this.lastSentimentUpdate;
+    if (timeSinceUpdate < this.config.SENTIMENT_UPDATE_INTERVAL) return;
+    
+    try {
+      await this.sentimentIntegration.update();
+      this.lastSentimentUpdate = Date.now();
+      console.log('\n🧠 Sentiment updated');
+    } catch (error) {
+      console.error(`❌ Sentiment update failed: ${error.message}`);
+    }
+  }
+  
+  getSentimentAdjustedOrderSize(symbol) {
+    if (!this.sentimentIntegration) {
+      return this.config.ORDER_SIZE_USD;
+    }
+    
+    const baseSymbol = symbol.split('/')[0];
+    const multiplier = this.sentimentIntegration.getDipBuyerMultiplier(baseSymbol);
+    const adjustedSize = this.config.ORDER_SIZE_USD * multiplier;
+    
+    if (multiplier !== 1.0) {
+      console.log(`   🧠 Sentiment adjustment: ${(multiplier * 100).toFixed(0)}% ($${this.config.ORDER_SIZE_USD} → $${adjustedSize.toFixed(2)})`);
+      this.stats.sentimentAdjustedBuys++;
+    }
+    
+    return adjustedSize;
   }
   
   async loadPositions() {
@@ -201,7 +276,9 @@ export class DipBuyer {
     }
     
     try {
-      const amount = this.config.ORDER_SIZE_USD / currentPrice;
+      // Get sentiment-adjusted order size
+      const orderSizeUSD = this.getSentimentAdjustedOrderSize(symbol);
+      const amount = orderSizeUSD / currentPrice;
       
       console.log(`   🛒 Buying dip: ${amount.toFixed(6)} ${symbol.split('/')[0]} at $${currentPrice.toFixed(2)}`);
       
@@ -306,6 +383,11 @@ export class DipBuyer {
   }
   
   async runCycle() {
+    // Update sentiment if needed
+    if (this.config.USE_SENTIMENT) {
+      await this.updateSentiment();
+    }
+    
     for (const symbol of this.config.SYMBOLS) {
       // Update price history
       const currentPrice = await this.updatePriceHistory(symbol);
@@ -355,6 +437,12 @@ export class DipBuyer {
   
   stop() {
     this.running = false;
+    
+    // Stop sentiment integration
+    if (this.sentimentIntegration) {
+      this.sentimentIntegration.stop();
+    }
+    
     console.log('\n🛑 Dip Buyer stopped');
     this.printStats();
   }
@@ -368,6 +456,14 @@ export class DipBuyer {
     console.log(`  Sell Orders: ${this.stats.sellOrders}`);
     console.log(`  Total Profit: $${this.stats.totalProfit.toFixed(2)}`);
     console.log(`  Currently Deployed: $${this.stats.totalDeployed.toFixed(2)}`);
+    console.log(`  Sentiment-Adjusted Buys: ${this.stats.sentimentAdjustedBuys}`);
+    
+    // Show current sentiment if available
+    if (this.sentimentIntegration) {
+      const summary = this.sentimentIntegration.getSummary();
+      console.log(`\n  Current Sentiment:`);
+      console.log(`    Fear & Greed: ${summary.fearGreed?.value || 'N/A'} (${summary.fearGreed?.classification || 'N/A'})`);
+    }
     
     // Show open positions
     const openPositions = Object.entries(this.positions);
