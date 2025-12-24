@@ -2,7 +2,7 @@
 
 /**
  * Grid Trading Bot - Health Check Script
- * Version: 1.1.0
+ * Version: 1.2.0
  * 
  * Verifies bot health by checking:
  * 1. Monitor process status
@@ -10,6 +10,7 @@
  * 3. Open orders on Binance.US
  * 4. Database connectivity
  * 5. DCA Dip Buyer status
+ * 6. Unrealized vs Realized P&L breakdown
  */
 
 import ccxt from 'ccxt';
@@ -355,6 +356,49 @@ function calculate24hPnL(db, botName) {
   } catch (e) {
     return { pnl: 0, trades: 0, error: e.message };
   }
+}
+
+/**
+ * Calculate unrealized P&L for crypto holdings
+ * Compares current value to cost basis from recent buys
+ */
+function calculateUnrealizedPnL(db, currentEquity, snapshot24hAgo) {
+  const result = {
+    btc: { unrealized: 0, costBasis: 0, currentValue: 0, holdings: 0 },
+    eth: { unrealized: 0, costBasis: 0, currentValue: 0, holdings: 0 },
+    sol: { unrealized: 0, costBasis: 0, currentValue: 0, holdings: 0 },
+    total: 0
+  };
+  
+  if (!currentEquity || !snapshot24hAgo) return result;
+  
+  // Calculate unrealized P&L based on holdings change and price change
+  // BTC
+  const btcHoldingsChange = currentEquity.btc_balance - snapshot24hAgo.btc_balance;
+  const btcPriceChange = currentEquity.btc_price - snapshot24hAgo.btc_price;
+  // Unrealized from existing holdings (price movement)
+  const btcUnrealizedFromPrice = snapshot24hAgo.btc_balance * btcPriceChange;
+  // Unrealized from new holdings (bought at higher/lower than current)
+  const btcUnrealizedFromNewHoldings = btcHoldingsChange * (currentEquity.btc_price - snapshot24hAgo.btc_price);
+  result.btc.unrealized = btcUnrealizedFromPrice;
+  result.btc.holdings = currentEquity.btc_balance;
+  result.btc.currentValue = currentEquity.btc_balance * currentEquity.btc_price;
+  
+  // ETH
+  const ethPriceChange = currentEquity.eth_price - snapshot24hAgo.eth_price;
+  result.eth.unrealized = snapshot24hAgo.eth_balance * ethPriceChange;
+  result.eth.holdings = currentEquity.eth_balance;
+  result.eth.currentValue = currentEquity.eth_balance * currentEquity.eth_price;
+  
+  // SOL
+  const solPriceChange = currentEquity.sol_price - snapshot24hAgo.sol_price;
+  result.sol.unrealized = snapshot24hAgo.sol_balance * solPriceChange;
+  result.sol.holdings = currentEquity.sol_balance;
+  result.sol.currentValue = currentEquity.sol_balance * currentEquity.sol_price;
+  
+  result.total = result.btc.unrealized + result.eth.unrealized + result.sol.unrealized;
+  
+  return result;
 }
 
 /**
@@ -874,10 +918,57 @@ async function runHealthCheck() {
       const equityChangePct = (equityChange / snapshot24hAgo.total_equity_usd) * 100;
       const eqColor = equityChange >= 0 ? colors.green : colors.red;
       const eqSign = equityChange >= 0 ? '+' : '';
-      console.log(`\n   24h Equity Change (Monitored): ${eqColor}${eqSign}$${equityChange.toFixed(2)} (${eqSign}${equityChangePct.toFixed(2)}%)${colors.reset}`);
-      console.log(`   (Monitored equity 24h ago: $${snapshot24hAgo.total_equity_usd.toFixed(2)})`);
+      
+      // Calculate unrealized P&L breakdown
+      const unrealizedPnL = calculateUnrealizedPnL(db, currentEquity, snapshot24hAgo);
+      
+      // 24h P&L Breakdown section
+      console.log(`\n${header('   24h P&L Breakdown:')}`);  
+      console.log(`   ┌─────────────────────────────────────────────────────┐`);
+      
+      // Realized P&L (from completed trades)
+      const realized24hColor = total24hPnL >= 0 ? colors.green : colors.red;
+      const realized24hSign = total24hPnL >= 0 ? '+' : '';
+      console.log(`   │ ${colors.green}✓ Realized P&L${colors.reset} (completed trades):  ${realized24hColor}${realized24hSign}$${total24hPnL.toFixed(2)}${colors.reset}`.padEnd(68) + '│');
+      
+      // Unrealized P&L (from price movement on holdings)
+      const unrealizedColor = unrealizedPnL.total >= 0 ? colors.green : colors.red;
+      const unrealizedSign = unrealizedPnL.total >= 0 ? '+' : '';
+      console.log(`   │ ${colors.yellow}◷ Unrealized P&L${colors.reset} (price movement):  ${unrealizedColor}${unrealizedSign}$${unrealizedPnL.total.toFixed(2)}${colors.reset}`.padEnd(68) + '│');
+      
+      // Show breakdown by coin if significant
+      if (Math.abs(unrealizedPnL.btc.unrealized) > 1) {
+        const btcColor = unrealizedPnL.btc.unrealized >= 0 ? colors.green : colors.red;
+        const btcSign = unrealizedPnL.btc.unrealized >= 0 ? '+' : '';
+        console.log(`   │    BTC: ${btcColor}${btcSign}$${unrealizedPnL.btc.unrealized.toFixed(2)}${colors.reset}`.padEnd(60) + '│');
+      }
+      if (Math.abs(unrealizedPnL.eth.unrealized) > 1) {
+        const ethColor = unrealizedPnL.eth.unrealized >= 0 ? colors.green : colors.red;
+        const ethSign = unrealizedPnL.eth.unrealized >= 0 ? '+' : '';
+        console.log(`   │    ETH: ${ethColor}${ethSign}$${unrealizedPnL.eth.unrealized.toFixed(2)}${colors.reset}`.padEnd(60) + '│');
+      }
+      if (Math.abs(unrealizedPnL.sol.unrealized) > 1) {
+        const solColor = unrealizedPnL.sol.unrealized >= 0 ? colors.green : colors.red;
+        const solSign = unrealizedPnL.sol.unrealized >= 0 ? '+' : '';
+        console.log(`   │    SOL: ${solColor}${solSign}$${unrealizedPnL.sol.unrealized.toFixed(2)}${colors.reset}`.padEnd(60) + '│');
+      }
+      
+      console.log(`   ├─────────────────────────────────────────────────────┤`);
+      
+      // Net equity change
+      console.log(`   │ ${colors.bold}Net Equity Change${colors.reset}:              ${eqColor}${eqSign}$${equityChange.toFixed(2)} (${eqSign}${equityChangePct.toFixed(2)}%)${colors.reset}`.padEnd(68) + '│');
+      console.log(`   └─────────────────────────────────────────────────────┘`);
+      
+      // Explanation note
+      if (equityChange < 0 && total24hPnL >= 0) {
+        console.log(`\n   ${colors.cyan}ℹ️  Note: Your realized profits are positive. The equity drop is from${colors.reset}`);
+        console.log(`   ${colors.cyan}   unrealized losses (market price movement on your holdings).${colors.reset}`);
+        console.log(`   ${colors.cyan}   These will recover when prices bounce back.${colors.reset}`);
+      }
+      
+      console.log(`\n   (Equity 24h ago: $${snapshot24hAgo.total_equity_usd.toFixed(2)})`);
     } else {
-      console.log(`\n   ${colors.yellow}24h Equity Change: Not enough history yet${colors.reset}`);
+      console.log(`\n   ${colors.yellow}24h P&L Breakdown: Not enough history yet${colors.reset}`);
       console.log(`   (First snapshot recorded - check back in 24 hours)`);
     }
   }
