@@ -2,7 +2,7 @@
 
 /**
  * Grid Trading Bot - Health Check Script
- * Version: 1.2.0
+ * Version: 1.3.0
  * 
  * Verifies bot health by checking:
  * 1. Monitor process status
@@ -702,15 +702,24 @@ async function runHealthCheck() {
   let currentEquity = null;
   let allCoinsEquity = null;
   let tickers = null;
+  let capitalDeployment = null;
   try {
     const balance = await exchange.fetchBalance();
     tickers = await exchange.fetchTickers(['BTC/USD', 'ETH/USD', 'SOL/USD']);
     
     // Monitored coins (BTC, ETH, SOL, USD)
     const usdBalance = balance.USD?.total || 0;
+    const usdFree = balance.USD?.free || 0;
+    const usdInOrders = balance.USD?.used || 0;
     const btcBalance = balance.BTC?.total || 0;
+    const btcFree = balance.BTC?.free || 0;
+    const btcInOrders = balance.BTC?.used || 0;
     const ethBalance = balance.ETH?.total || 0;
+    const ethFree = balance.ETH?.free || 0;
+    const ethInOrders = balance.ETH?.used || 0;
     const solBalance = balance.SOL?.total || 0;
+    const solFree = balance.SOL?.free || 0;
+    const solInOrders = balance.SOL?.used || 0;
     
     const btcPrice = tickers['BTC/USD']?.last || 0;
     const ethPrice = tickers['ETH/USD']?.last || 0;
@@ -730,6 +739,27 @@ async function runHealthCheck() {
       sol_balance: solBalance,
       sol_price: solPrice,
       total_equity_usd: monitoredEquityUsd
+    };
+    
+    // Calculate capital deployment (funds tied up in orders)
+    const btcInOrdersUsd = btcInOrders * btcPrice;
+    const ethInOrdersUsd = ethInOrders * ethPrice;
+    const solInOrdersUsd = solInOrders * solPrice;
+    const totalInOrders = usdInOrders + btcInOrdersUsd + ethInOrdersUsd + solInOrdersUsd;
+    const totalFree = usdFree + (btcFree * btcPrice) + (ethFree * ethPrice) + (solFree * solPrice);
+    const utilizationPct = monitoredEquityUsd > 0 ? (totalInOrders / monitoredEquityUsd) * 100 : 0;
+    
+    capitalDeployment = {
+      usdInOrders,
+      btcInOrders,
+      btcInOrdersUsd,
+      ethInOrders,
+      ethInOrdersUsd,
+      solInOrders,
+      solInOrdersUsd,
+      totalInOrders,
+      totalFree,
+      utilizationPct
     };
     
     // Calculate total equity from ALL coins
@@ -876,6 +906,31 @@ async function runHealthCheck() {
   const pnl24hColor = total24hPnL >= 0 ? colors.green : colors.red;
   const pnl24hSign = total24hPnL >= 0 ? '+' : '';
   console.log(`   24h Grid P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
+  
+  // Capital Deployment Summary
+  if (capitalDeployment) {
+    console.log(`\n${header('Capital Deployment:')}`);  
+    console.log(`   ${colors.bold}Total in Grid Orders: $${capitalDeployment.totalInOrders.toFixed(2)}${colors.reset}`);
+    console.log(`      USD in buy orders: $${capitalDeployment.usdInOrders.toFixed(2)}`);
+    if (capitalDeployment.btcInOrdersUsd > 0.01) {
+      console.log(`      BTC in sell orders: ${capitalDeployment.btcInOrders.toFixed(6)} ($${capitalDeployment.btcInOrdersUsd.toFixed(2)})`);
+    }
+    if (capitalDeployment.ethInOrdersUsd > 0.01) {
+      console.log(`      ETH in sell orders: ${capitalDeployment.ethInOrders.toFixed(6)} ($${capitalDeployment.ethInOrdersUsd.toFixed(2)})`);
+    }
+    if (capitalDeployment.solInOrdersUsd > 0.01) {
+      console.log(`      SOL in sell orders: ${capitalDeployment.solInOrders.toFixed(6)} ($${capitalDeployment.solInOrdersUsd.toFixed(2)})`);
+    }
+    console.log(`   Available (not in orders): $${capitalDeployment.totalFree.toFixed(2)}`);
+    
+    // Utilization bar
+    const utilPct = capitalDeployment.utilizationPct;
+    const barLength = 20;
+    const filledLength = Math.round((utilPct / 100) * barLength);
+    const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
+    const utilColor = utilPct >= 70 ? colors.green : utilPct >= 40 ? colors.yellow : colors.red;
+    console.log(`   Capital Utilization: ${utilColor}[${bar}] ${utilPct.toFixed(1)}%${colors.reset}`);
+  }
   
   // Equity Summary
   if (currentEquity) {
