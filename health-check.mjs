@@ -2,7 +2,7 @@
 
 /**
  * Grid Trading Bot - Health Check Script
- * Version: 1.3.1
+ * Version: 1.3.2
  * 
  * Verifies bot health by checking:
  * 1. Monitor process status
@@ -128,6 +128,38 @@ function getServiceDetails(serviceName) {
     };
   } catch (e) {
     return null;
+  }
+}
+
+/**
+ * Check systemd journal for recent errors (last hour only)
+ * This catches service-level failures without flagging old historical errors
+ */
+function checkRecentSystemdErrors(serviceName) {
+  try {
+    // Check for errors in the last hour only
+    const result = execSync(
+      `journalctl -u ${serviceName} --since "1 hour ago" --no-pager 2>/dev/null | grep -iE "error|failed|failure" | grep -v "No errors" | tail -5`,
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }
+    );
+    
+    const errors = result.trim().split('\n').filter(line => line.trim());
+    
+    if (errors.length > 0) {
+      return {
+        hasErrors: true,
+        count: errors.length,
+        recentErrors: errors.slice(0, 3)  // Return up to 3 most recent
+      };
+    }
+    
+    return { hasErrors: false, count: 0, recentErrors: [] };
+  } catch (e) {
+    // grep returns exit code 1 if no matches, which is good (no errors)
+    return { hasErrors: false, count: 0, recentErrors: [] };
   }
 }
 
@@ -553,6 +585,21 @@ async function checkBotHealth(botName, exchange, db) {
       console.log(warning(`Errors detected in recent logs`));
       results.issues.push('Errors in logs');
     }
+  }
+  
+  // 3b. Check systemd journal for recent errors (last hour only)
+  // Map: live-btc-bot -> enhanced-btc-bot
+  const serviceName = botName.replace('live-', 'enhanced-');
+  const systemdErrors = checkRecentSystemdErrors(serviceName);
+  
+  if (systemdErrors.hasErrors) {
+    console.log(warning(`Service errors in last hour (${systemdErrors.count})`));
+    for (const err of systemdErrors.recentErrors) {
+      // Extract just the relevant part of the error message
+      const shortErr = err.length > 80 ? err.substring(0, 80) + '...' : err;
+      console.log(`   ${colors.red}→ ${shortErr}${colors.reset}`);
+    }
+    results.issues.push('Recent service errors');
   }
   
   // 4. Check Binance orders (only if bot should be running)
