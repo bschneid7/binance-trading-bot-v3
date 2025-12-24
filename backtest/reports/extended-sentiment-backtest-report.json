@@ -1,0 +1,314 @@
+{
+  "BTC": {
+    "symbol": "BTC",
+    "days": 420,
+    "noSentiment": {
+      "summary": {
+        "initialCapital": 10000,
+        "finalEquity": 9765.231574230509,
+        "totalReturn": -2.3476842576949095,
+        "annualizedReturn": -2.053089782919182,
+        "maxDrawdown": 7.565079444624222,
+        "sharpeRatio": -0.3638841644540924
+      },
+      "trades": {
+        "totalTrades": 5864,
+        "buyTrades": 2930,
+        "sellTrades": 2934,
+        "winRate": 30.368098159509206,
+        "realizedProfit": -19.324912454315445,
+        "totalFees": 586.4000000000648
+      },
+      "sentiment": {
+        "enabled": false,
+        "skippedBuys": 0,
+        "skippedSells": 0,
+        "adjustedOrders": 0,
+        "avgPositionMultiplier": 1
+      }
+    },
+    "withSentiment": {
+      "summary": {
+        "initialCapital": 10000,
+        "finalEquity": 9779.441810581186,
+        "totalReturn": -2.2055818941881444,
+        "annualizedReturn": -1.928642324284613,
+        "maxDrawdown": 9.19198037043723,
+        "sharpeRatio": -0.21782854847341995
+      },
+      "trades": {
+        "totalTrades": 5072,
+        "buyTrades": 2534,
+        "sellTrades": 2538,
+        "winRate": 30.772261623325452,
+        "realizedProfit": 80.10824497507257,
+        "totalFees": 495.9949999999978
+      },
+      "sentiment": {
+        "enabled": true,
+        "skippedBuys": 429,
+        "skippedSells": 670,
+        "adjustedOrders": 4262,
+        "avgPositionMultiplier": 0.9737095260441118
+      }
+    },
+    "comparison": {
+      "summary.totalReturn": {
+        "noSentiment": -2.3476842576949095,
+        "withSentiment": -2.2055818941881444,
+        "diff": 0.14210236350676508
+      },
+      "summary.annualizedReturn": {
+        "noSentiment": -2.053089782919182,
+        "withSentiment": -1.928642324284613,
+        "diff": 0.12444745863456896
+      },
+      "trades.totalTrades": {
+        "noSentiment": 5864,
+        "withSentiment": 5072,
+        "diff": -792
+      },
+      "trades.winRate": {
+        "noSentiment": 30.368098159509206,
+        "withSentiment": 30.772261623325452,
+        "diff": 0.40416346381624635
+      },
+      "trades.realizedProfit": {
+        "noSentiment": -19.324912454315445,
+        "withSentiment": 80.10824497507257,
+        "diff": 99.43315742938802
+      },
+      "summary.maxDrawdown": {
+        "noSentiment": 7.565079444624222,
+        "withSentiment": 9.19198037043723,
+        "diff": 1.6269009258130085
+      },
+      "summary.sharpeRatio": {
+        "noSentiment": -0.3638841644540924,
+        "withSentiment": -0.21782854847341995,
+        "diff": 0.14605561598067243
+      },
+      "summary.finalEquity": {
+        "noSentiment": 9765.231574230509,
+        "withSentiment": 9779.441810581186,
+        "diff": 14.210236350676496
+      }
+    },
+    "fearGreedStats": {
+      "avgFG": 53.87111111111111,
+      "extremeFear": 31,
+      "fear": 93,
+      "neutral": 117,
+      "greed": 189,
+      "extremeGreed": 20
+    }
+  },
+  "ETH": {
+    "symbol": "ETH",
+    "days": 420,
+    "noSentiment": {
+      "summary": {
+        "initialCapital": 10000,
+        "finalEquity": 9667.901485784925,
+        "totalReturn": -3.320985142150748,
+        "annualizedReturn": -2.9060863076019183,
+        "maxDrawdown": 13.153872780448369,
+        "sharpeRatio": -0.3217711703406007
+      },
+      "trades": {
+        "totalTrades": 5621,
+        "buyTrades": 2807,
+        "sellTrades": 2814,
+        "winRate": 31.13006396588486,
+        "realizedProfit": -48.273014190288734,
+        "totalFees": 562.1000000000593
+      },
+      "sentiment": {
+        "enabled": false,
+        "skippedBuys": 0,
+        "skippedSells": 0,
+        "adjustedOrders": 0,
+        "avgPositionMultiplier": 1
+      }
+    },
+    "withSentiment": {
+      "summary": {
+        "initialCapital": 10000,
+        "finalEquity": 9699.089232531267,
+        "totalReturn": -3.0091076746873298,
+        "annualizedReturn": -2.6326402591475784,
+        "maxDrawdown": 17.049094260288093,
+        "sharpeRatio": -0.1437649037689977
+      },
+      "trades": {
+        "totalTrades": 4937,
+        "buyTrades": 2465,
+        "sellTrades": 2472,
+        "winRate": 30.784789644012946,
+        "realizedProfit": 62.481444454360236,
+        "totalFees": 447.5749999999843
+      },
+      "sentiment": {
+        "enabled": true,
+        "skippedBuys": 550,
+        "skippedSells": 796,
+        "adjustedOrders": 4411,
+        "avgPositionMultiplier": 0.8954318748583124
+      }
+    },
+    "comparison": {
+      "summary.totalReturn": {
+        "noSentiment": -3.320985142150748,
+        "withSentiment": -3.0091076746873298,
+        "diff": 0.31187746746341816
+      },
+      "summary.annualizedReturn": {
+        "noSentiment": -2.9060863076019183,
+        "withSentiment": -2.6326402591475784,
+        "diff": 0.27344604845433995
+      },
+      "trades.totalTrades": {
+        "noSentiment": 5621,
+        "withSentiment": 4937,
+        "diff": -684
+      },
+      "trades.winRate": {
+        "noSentiment": 31.13006396588486,
+        "withSentiment": 30.784789644012946,
+        "diff": -0.34527432187191565
+      },
+      "trades.realizedProfit": {
+        "noSentiment": -48.273014190288734,
+        "withSentiment": 62.481444454360236,
+        "diff": 110.75445864464896
+      },
+      "summary.maxDrawdown": {
+        "noSentiment": 13.153872780448369,
+        "withSentiment": 17.049094260288093,
+        "diff": 3.8952214798397247
+      },
+      "summary.sharpeRatio": {
+        "noSentiment": -0.3217711703406007,
+        "withSentiment": -0.1437649037689977,
+        "diff": 0.178006266571603
+      },
+      "summary.finalEquity": {
+        "noSentiment": 9667.901485784925,
+        "withSentiment": 9699.089232531267,
+        "diff": 31.187746746341872
+      }
+    },
+    "fearGreedStats": {
+      "avgFG": 53.87111111111111,
+      "extremeFear": 31,
+      "fear": 93,
+      "neutral": 117,
+      "greed": 189,
+      "extremeGreed": 20
+    }
+  },
+  "SOL": {
+    "symbol": "SOL",
+    "days": 420,
+    "noSentiment": {
+      "summary": {
+        "initialCapital": 10000,
+        "finalEquity": 8766.852976785378,
+        "totalReturn": -12.331470232146222,
+        "annualizedReturn": -10.856268165027549,
+        "maxDrawdown": 14.137176824780628,
+        "sharpeRatio": -1.1199654945010589
+      },
+      "trades": {
+        "totalTrades": 7692,
+        "buyTrades": 3850,
+        "sellTrades": 3842,
+        "winRate": 28.136387298282145,
+        "realizedProfit": -66.64482384573533,
+        "totalFees": 769.2000000001063
+      },
+      "sentiment": {
+        "enabled": false,
+        "skippedBuys": 0,
+        "skippedSells": 0,
+        "adjustedOrders": 0,
+        "avgPositionMultiplier": 1
+      }
+    },
+    "withSentiment": {
+      "summary": {
+        "initialCapital": 10000,
+        "finalEquity": 8695.863970376688,
+        "totalReturn": -13.041360296233123,
+        "annualizedReturn": -11.486903554258987,
+        "maxDrawdown": 16.069428945479164,
+        "sharpeRatio": -1.0260855842640517
+      },
+      "trades": {
+        "totalTrades": 7442,
+        "buyTrades": 3725,
+        "sellTrades": 3717,
+        "winRate": 28.51762173796072,
+        "realizedProfit": -60.49845113811665,
+        "totalFees": 694.2899999999864
+      },
+      "sentiment": {
+        "enabled": true,
+        "skippedBuys": 69,
+        "skippedSells": 137,
+        "adjustedOrders": 5995,
+        "avgPositionMultiplier": 0.9167472894078563
+      }
+    },
+    "comparison": {
+      "summary.totalReturn": {
+        "noSentiment": -12.331470232146222,
+        "withSentiment": -13.041360296233123,
+        "diff": -0.7098900640869008
+      },
+      "summary.annualizedReturn": {
+        "noSentiment": -10.856268165027549,
+        "withSentiment": -11.486903554258987,
+        "diff": -0.630635389231438
+      },
+      "trades.totalTrades": {
+        "noSentiment": 7692,
+        "withSentiment": 7442,
+        "diff": -250
+      },
+      "trades.winRate": {
+        "noSentiment": 28.136387298282145,
+        "withSentiment": 28.51762173796072,
+        "diff": 0.3812344396785754
+      },
+      "trades.realizedProfit": {
+        "noSentiment": -66.64482384573533,
+        "withSentiment": -60.49845113811665,
+        "diff": 6.146372707618681
+      },
+      "summary.maxDrawdown": {
+        "noSentiment": 14.137176824780628,
+        "withSentiment": 16.069428945479164,
+        "diff": 1.9322521206985357
+      },
+      "summary.sharpeRatio": {
+        "noSentiment": -1.1199654945010589,
+        "withSentiment": -1.0260855842640517,
+        "diff": 0.09387991023700715
+      },
+      "summary.finalEquity": {
+        "noSentiment": 8766.852976785378,
+        "withSentiment": 8695.863970376688,
+        "diff": -70.98900640869033
+      }
+    },
+    "fearGreedStats": {
+      "avgFG": 53.87111111111111,
+      "extremeFear": 31,
+      "fear": 93,
+      "neutral": 117,
+      "greed": 189,
+      "extremeGreed": 20
+    }
+  }
+}

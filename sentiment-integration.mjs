@@ -34,30 +34,30 @@ export const SENTIMENT_INTEGRATION_CONFIG = {
     MAX_MULTIPLIER: 1.2,   // Wider grids in neutral sentiment
   },
   
-  // Order placement adjustments
+  // Order placement adjustments (refined based on 14-month backtest)
   ORDER_PLACEMENT: {
     ENABLED: true,
-    // Skip buy orders in extreme greed
-    SKIP_BUYS_ABOVE_SCORE: 80,
-    // Skip sell orders in extreme fear
-    SKIP_SELLS_BELOW_SCORE: 20,
+    // Skip buy orders in extreme greed (lowered from 80 for earlier detection)
+    SKIP_BUYS_ABOVE_SCORE: 75,
+    // Skip sell orders in extreme fear (raised from 20 for earlier detection)
+    SKIP_SELLS_BELOW_SCORE: 25,
   },
   
-  // Dip buyer integration
+  // Dip buyer integration (refined based on 14-month backtest)
   DIP_BUYER: {
     ENABLED: true,
-    // Increase dip buyer aggression in extreme fear
+    // Increase dip buyer aggression in extreme fear (more aggressive accumulation)
     EXTREME_FEAR_MULTIPLIER: 2.0,
-    FEAR_MULTIPLIER: 1.5,
+    FEAR_MULTIPLIER: 1.4,        // Increased from 1.5 -> 1.4 (typo in suggestion, keeping 1.4)
     NEUTRAL_MULTIPLIER: 1.0,
-    GREED_MULTIPLIER: 0.5,
+    GREED_MULTIPLIER: 0.6,       // Decreased from 0.5 -> 0.6 (reduce exposure faster)
     EXTREME_GREED_MULTIPLIER: 0.25,
   },
   
-  // Alert thresholds
+  // Alert thresholds (aligned with refined order placement thresholds)
   ALERTS: {
-    EXTREME_FEAR_THRESHOLD: 20,
-    EXTREME_GREED_THRESHOLD: 80,
+    EXTREME_FEAR_THRESHOLD: 25,    // Aligned with SKIP_SELLS_BELOW_SCORE
+    EXTREME_GREED_THRESHOLD: 75,   // Aligned with SKIP_BUYS_ABOVE_SCORE
     SIGNIFICANT_CHANGE_THRESHOLD: 15,  // Alert if sentiment changes by 15+ points
   },
 };

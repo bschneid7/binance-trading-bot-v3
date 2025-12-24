@@ -33,11 +33,11 @@ const SENTIMENT_CONFIG = {
     ONCHAIN: 0.20,           // 20% weight
   },
   
-  // Thresholds for trading signals
-  EXTREME_FEAR_THRESHOLD: 25,
+  // Thresholds for trading signals (refined based on 14-month backtest)
+  EXTREME_FEAR_THRESHOLD: 25,      // Increased from 20 - more conservative
   FEAR_THRESHOLD: 40,
   GREED_THRESHOLD: 60,
-  EXTREME_GREED_THRESHOLD: 75,
+  EXTREME_GREED_THRESHOLD: 75,     // Decreased from 80 - earlier greed detection
   
   // News analysis
   MAX_NEWS_ITEMS: 20,

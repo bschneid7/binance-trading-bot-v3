@@ -164,7 +164,7 @@ const GRID_TRAILER_CONFIG = {
   SHIFT_COOLDOWN_MS: 60 * 60 * 1000,  // 1 hour between shifts
 };
 
-// Sentiment analysis configuration
+// Sentiment analysis configuration (refined based on 14-month backtest Dec 2025)
 const SENTIMENT_CONFIG = {
   ENABLED: true,
   UPDATE_INTERVAL: 15 * 60 * 1000,  // 15 minutes
@@ -180,11 +180,11 @@ const SENTIMENT_CONFIG = {
     MIN_MULTIPLIER: 0.8,
     MAX_MULTIPLIER: 1.2,
   },
-  // Order placement controls
+  // Order placement controls (refined thresholds for earlier detection)
   ORDER_PLACEMENT: {
     ENABLED: true,
-    SKIP_BUYS_ABOVE_SCORE: 80,   // Skip buys in extreme greed
-    SKIP_SELLS_BELOW_SCORE: 20,  // Skip sells in extreme fear
+    SKIP_BUYS_ABOVE_SCORE: 75,   // Skip buys in extreme greed (lowered from 80)
+    SKIP_SELLS_BELOW_SCORE: 25,  // Skip sells in extreme fear (raised from 20)
   },
 };
 
