@@ -70,29 +70,38 @@ export class HistoricalDataFetcher {
       return inputSymbol;
     }
     
-    // Try common variations
+    // Parse the input symbol
+    const [base, quote] = inputSymbol.split('/');
+    
+    // Build list of variations to try
     const variations = [
-      inputSymbol,
-      inputSymbol.replace('/', ''),  // BTCUSD
-      inputSymbol.replace('USD', 'USDT'),  // BTC/USDT
-      inputSymbol.replace('/USD', '/USDT'),  // BTC/USDT
+      inputSymbol,                           // BTC/USD (exact)
+      `${base}/USDT`,                        // BTC/USDT
+      `${base}/USDC`,                        // BTC/USDC
+      `${base}/BUSD`,                        // BTC/BUSD
+      inputSymbol.replace('/', ''),          // BTCUSD
     ];
+    
+    console.log(`   Looking for symbol variations: ${variations.join(', ')}`);
     
     for (const variation of variations) {
       if (this.exchange.markets[variation]) {
+        console.log(`   ✓ Found: ${variation}`);
         return variation;
       }
     }
     
-    // Search by base/quote
-    const [base, quote] = inputSymbol.split('/');
+    // Search by base currency
+    console.log(`   Searching by base currency: ${base}`);
     for (const marketId of Object.keys(this.exchange.markets)) {
       const market = this.exchange.markets[marketId];
-      if (market.base === base && (market.quote === quote || market.quote === 'USDT')) {
+      if (market.base === base) {
+        console.log(`   ✓ Found by base: ${marketId}`);
         return marketId;
       }
     }
     
+    console.log(`   ✗ No match found, using original: ${inputSymbol}`);
     return inputSymbol;  // Return original if nothing found
   }
 
