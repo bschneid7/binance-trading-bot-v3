@@ -1,0 +1,40 @@
+{
+  "symbol": "BTC/USD",
+  "timeframe": "1h",
+  "startDate": "2024-01-01",
+  "endDate": "2024-06-01",
+  "gridLevels": 20,
+  "orderSize": 100,
+  "initialCapital": 10000,
+  "lowerPrice": null,
+  "upperPrice": null,
+  "makerFee": 0.001,
+  "takerFee": 0.001,
+  "configurations": [
+    {
+      "name": "Conservative (10 levels)",
+      "gridLevels": 10,
+      "orderSize": 200
+    },
+    {
+      "name": "Standard (20 levels)",
+      "gridLevels": 20,
+      "orderSize": 100
+    },
+    {
+      "name": "Aggressive (30 levels)",
+      "gridLevels": 30,
+      "orderSize": 66
+    },
+    {
+      "name": "Dense (50 levels)",
+      "gridLevels": 50,
+      "orderSize": 40
+    },
+    {
+      "name": "Wide Grid (15 levels, $150)",
+      "gridLevels": 15,
+      "orderSize": 150
+    }
+  ]
+}
