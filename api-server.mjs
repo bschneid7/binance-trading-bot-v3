@@ -17,12 +17,38 @@
 
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import ccxt from 'ccxt';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDatabase } from './database.mjs';
 import { execSync } from 'child_process';
+
+/**
+ * Input validation and sanitization helpers
+ */
+const VALID_BOT_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+const MAX_BOT_NAME_LENGTH = 50;
+
+function sanitizeBotName(name) {
+  if (!name || typeof name !== 'string') {
+    return null;
+  }
+  const trimmed = name.trim().slice(0, MAX_BOT_NAME_LENGTH);
+  if (!VALID_BOT_NAME_REGEX.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function validateLimit(limit, defaultVal = 100, maxVal = 1000) {
+  const parsed = parseInt(limit);
+  if (isNaN(parsed) || parsed < 1) {
+    return defaultVal;
+  }
+  return Math.min(parsed, maxVal);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,9 +59,35 @@ const app = express();
 const db = getDatabase();
 const PORT = process.env.API_PORT || 3001;
 
+// Rate limiting configuration
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: { error: 'Too many requests', message: 'Please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Stricter rate limit for sensitive operations
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // Only 20 start/stop operations per 15 minutes
+  message: { error: 'Too many requests', message: 'Rate limit exceeded for bot control operations' },
+});
+
+// CORS configuration - restrict to specific origins in production
+const corsOptions = {
+  origin: process.env.CORS_ALLOWED_ORIGINS 
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',')
+    : true, // Allow all if not configured (for local development)
+  credentials: true,
+  optionsSuccessStatus: 200,
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
+app.use(limiter); // Apply rate limiting to all routes
 
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -168,7 +220,10 @@ app.get('/api/bots', (req, res) => {
  */
 app.get('/api/bots/:name', async (req, res) => {
   try {
-    const { name } = req.params;
+    const name = sanitizeBotName(req.params.name);
+    if (!name) {
+      return res.status(400).json({ error: 'Bad request', message: 'Invalid bot name format' });
+    }
     const bot = db.getBot(name);
     
     if (!bot) {
@@ -220,7 +275,10 @@ app.get('/api/bots/:name', async (req, res) => {
  */
 app.get('/api/bots/:name/orders', (req, res) => {
   try {
-    const { name } = req.params;
+    const name = sanitizeBotName(req.params.name);
+    if (!name) {
+      return res.status(400).json({ error: 'Bad request', message: 'Invalid bot name format' });
+    }
     const bot = db.getBot(name);
     
     if (!bot) {
@@ -251,8 +309,11 @@ app.get('/api/bots/:name/orders', (req, res) => {
  */
 app.get('/api/bots/:name/trades', (req, res) => {
   try {
-    const { name } = req.params;
-    const limit = parseInt(req.query.limit) || 100;
+    const name = sanitizeBotName(req.params.name);
+    if (!name) {
+      return res.status(400).json({ error: 'Bad request', message: 'Invalid bot name format' });
+    }
+    const limit = validateLimit(req.query.limit, 100, 1000);
     
     const bot = db.getBot(name);
     if (!bot) {
@@ -275,9 +336,12 @@ app.get('/api/bots/:name/trades', (req, res) => {
 /**
  * POST /api/bots/:name/start - Start a bot
  */
-app.post('/api/bots/:name/start', async (req, res) => {
+app.post('/api/bots/:name/start', strictLimiter, async (req, res) => {
   try {
-    const { name } = req.params;
+    const name = sanitizeBotName(req.params.name);
+    if (!name) {
+      return res.status(400).json({ error: 'Bad request', message: 'Invalid bot name format' });
+    }
     const bot = db.getBot(name);
     
     if (!bot) {
@@ -313,9 +377,12 @@ app.post('/api/bots/:name/start', async (req, res) => {
 /**
  * POST /api/bots/:name/stop - Stop a bot
  */
-app.post('/api/bots/:name/stop', async (req, res) => {
+app.post('/api/bots/:name/stop', strictLimiter, async (req, res) => {
   try {
-    const { name } = req.params;
+    const name = sanitizeBotName(req.params.name);
+    if (!name) {
+      return res.status(400).json({ error: 'Bad request', message: 'Invalid bot name format' });
+    }
     const bot = db.getBot(name);
     
     if (!bot) {

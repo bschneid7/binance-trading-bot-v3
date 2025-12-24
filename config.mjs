@@ -189,7 +189,7 @@ export const NOTIFICATION_CONFIG = {
   // Email settings
   email: {
     enabled: true,
-    recipient: 'bschneid7@gmail.com',
+    recipient: process.env.NOTIFICATION_EMAIL || 'bschneid7@gmail.com', // Set NOTIFICATION_EMAIL env var to override
     sender: process.env.GMAIL_USER || '',
     smtpHost: 'smtp.gmail.com',
     smtpPort: 587,

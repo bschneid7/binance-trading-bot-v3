@@ -1,0 +1,268 @@
+{
+  "timestamp": "2025-12-24T16:20:51.901Z",
+  "period": {
+    "startDate": "2024-11-01",
+    "endDate": "2025-12-24"
+  },
+  "oldConfig": {
+    "name": "OLD (v1.0)",
+    "SKIP_BUYS_ABOVE_SCORE": 80,
+    "SKIP_SELLS_BELOW_SCORE": 20,
+    "POSITION_MULTIPLIERS": {
+      "EXTREME_FEAR": {
+        "min": 0,
+        "max": 20,
+        "multiplier": 1.5
+      },
+      "FEAR": {
+        "min": 21,
+        "max": 35,
+        "multiplier": 1.25
+      },
+      "MILD_FEAR": {
+        "min": 36,
+        "max": 45,
+        "multiplier": 1.1
+      },
+      "NEUTRAL": {
+        "min": 46,
+        "max": 55,
+        "multiplier": 1
+      },
+      "MILD_GREED": {
+        "min": 56,
+        "max": 65,
+        "multiplier": 0.9
+      },
+      "GREED": {
+        "min": 66,
+        "max": 80,
+        "multiplier": 0.75
+      },
+      "EXTREME_GREED": {
+        "min": 81,
+        "max": 100,
+        "multiplier": 0.5
+      }
+    }
+  },
+  "newConfig": {
+    "name": "NEW (v1.1 Refined)",
+    "SKIP_BUYS_ABOVE_SCORE": 75,
+    "SKIP_SELLS_BELOW_SCORE": 25,
+    "POSITION_MULTIPLIERS": {
+      "EXTREME_FEAR": {
+        "min": 0,
+        "max": 25,
+        "multiplier": 1.4
+      },
+      "FEAR": {
+        "min": 26,
+        "max": 40,
+        "multiplier": 1.2
+      },
+      "MILD_FEAR": {
+        "min": 41,
+        "max": 50,
+        "multiplier": 1.1
+      },
+      "NEUTRAL": {
+        "min": 51,
+        "max": 55,
+        "multiplier": 1
+      },
+      "MILD_GREED": {
+        "min": 56,
+        "max": 65,
+        "multiplier": 0.9
+      },
+      "GREED": {
+        "min": 66,
+        "max": 75,
+        "multiplier": 0.6
+      },
+      "EXTREME_GREED": {
+        "min": 76,
+        "max": 100,
+        "multiplier": 0.5
+      }
+    }
+  },
+  "results": {
+    "BTC": {
+      "symbol": "BTC",
+      "startDate": "2024-11-01",
+      "endDate": "2025-12-24",
+      "old": {
+        "config": "OLD (v1.0)",
+        "summary": {
+          "initialCapital": 10000,
+          "finalEquity": 9779.441810581186,
+          "totalReturn": -2.2055818941881444,
+          "annualizedReturn": -1.928642324284613,
+          "maxDrawdown": 9.19198037043723,
+          "sharpeRatio": -0.21782854847341995
+        },
+        "trades": {
+          "totalTrades": 5072,
+          "buyTrades": 2534,
+          "sellTrades": 2538,
+          "winRate": 30.772261623325452,
+          "realizedProfit": 80.10824497507257,
+          "totalFees": 495.9949999999978
+        },
+        "sentiment": {
+          "skippedBuys": 429,
+          "skippedSells": 670,
+          "adjustedOrders": 4262,
+          "avgPositionMultiplier": 0.9737095260441118
+        }
+      },
+      "new": {
+        "config": "NEW (v1.1 Refined)",
+        "summary": {
+          "initialCapital": 10000,
+          "finalEquity": 9887.631676750456,
+          "totalReturn": -1.1236832324954413,
+          "annualizedReturn": -0.9819086131155563,
+          "maxDrawdown": 8.842380568275072,
+          "sharpeRatio": -0.07802036687452749
+        },
+        "trades": {
+          "totalTrades": 4260,
+          "buyTrades": 2128,
+          "sellTrades": 2132,
+          "winRate": 30.159474671669795,
+          "realizedProfit": 131.08048593230322,
+          "totalFees": 396.3900000000121
+        },
+        "sentiment": {
+          "skippedBuys": 1484,
+          "skippedSells": 1783,
+          "adjustedOrders": 3962,
+          "avgPositionMultiplier": 0.9252650176678107
+        }
+      }
+    },
+    "ETH": {
+      "symbol": "ETH",
+      "startDate": "2024-11-01",
+      "endDate": "2025-12-24",
+      "old": {
+        "config": "OLD (v1.0)",
+        "summary": {
+          "initialCapital": 10000,
+          "finalEquity": 9699.089232531267,
+          "totalReturn": -3.0091076746873298,
+          "annualizedReturn": -2.6326402591475784,
+          "maxDrawdown": 17.049094260288093,
+          "sharpeRatio": -0.1437649037689977
+        },
+        "trades": {
+          "totalTrades": 4937,
+          "buyTrades": 2465,
+          "sellTrades": 2472,
+          "winRate": 30.784789644012946,
+          "realizedProfit": 62.481444454360236,
+          "totalFees": 447.5749999999843
+        },
+        "sentiment": {
+          "skippedBuys": 550,
+          "skippedSells": 796,
+          "adjustedOrders": 4411,
+          "avgPositionMultiplier": 0.8954318748583124
+        }
+      },
+      "new": {
+        "config": "NEW (v1.1 Refined)",
+        "summary": {
+          "initialCapital": 10000,
+          "finalEquity": 9855.341904871782,
+          "totalReturn": -1.4465809512821761,
+          "annualizedReturn": -1.2643275703698165,
+          "maxDrawdown": 16.674026036869723,
+          "sharpeRatio": -0.021422701332181125
+        },
+        "trades": {
+          "totalTrades": 3716,
+          "buyTrades": 1855,
+          "sellTrades": 1861,
+          "winRate": 29.33906501880709,
+          "realizedProfit": 99.5345007115245,
+          "totalFees": 301.8800000000042
+        },
+        "sentiment": {
+          "skippedBuys": 2671,
+          "skippedSells": 2262,
+          "adjustedOrders": 3484,
+          "avgPositionMultiplier": 0.7998851894373946
+        }
+      }
+    },
+    "SOL": {
+      "symbol": "SOL",
+      "startDate": "2024-11-01",
+      "endDate": "2025-12-24",
+      "old": {
+        "config": "OLD (v1.0)",
+        "summary": {
+          "initialCapital": 10000,
+          "finalEquity": 8695.863970376688,
+          "totalReturn": -13.041360296233123,
+          "annualizedReturn": -11.486903554258987,
+          "maxDrawdown": 16.069428945479164,
+          "sharpeRatio": -1.0260855842640517
+        },
+        "trades": {
+          "totalTrades": 7442,
+          "buyTrades": 3725,
+          "sellTrades": 3717,
+          "winRate": 28.51762173796072,
+          "realizedProfit": -60.49845113811665,
+          "totalFees": 694.2899999999864
+        },
+        "sentiment": {
+          "skippedBuys": 69,
+          "skippedSells": 137,
+          "adjustedOrders": 5995,
+          "avgPositionMultiplier": 0.9167472894078563
+        }
+      },
+      "new": {
+        "config": "NEW (v1.1 Refined)",
+        "summary": {
+          "initialCapital": 10000,
+          "finalEquity": 8618.103345651853,
+          "totalReturn": -13.818966543481473,
+          "annualizedReturn": -12.178444800268906,
+          "maxDrawdown": 17.91020982413828,
+          "sharpeRatio": -0.8429759773586409
+        },
+        "trades": {
+          "totalTrades": 6766,
+          "buyTrades": 3387,
+          "sellTrades": 3379,
+          "winRate": 28.736312518496597,
+          "realizedProfit": -24.20626396859249,
+          "totalFees": 593.6800000000071
+        },
+        "sentiment": {
+          "skippedBuys": 405,
+          "skippedSells": 772,
+          "adjustedOrders": 6311,
+          "avgPositionMultiplier": 0.8686103628584724
+        }
+      }
+    }
+  },
+  "summary": {
+    "avgReturnOld": -6.085349955036199,
+    "avgReturnNew": -5.463076909086364,
+    "avgSharpeOld": -0.46255967883548976,
+    "avgSharpeNew": -0.31413968185511654,
+    "totalProfitOld": 82.09123829131616,
+    "totalProfitNew": 206.40872267523523,
+    "avgDrawdownOld": 14.10350119206816,
+    "avgDrawdownNew": 14.475538809761025
+  }
+}
