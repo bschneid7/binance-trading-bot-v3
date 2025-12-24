@@ -909,7 +909,14 @@ export class EnhancedMonitor {
     
     // Add sentiment info if available
     if (this.currentSentiment && this.options.useSentimentAnalysis) {
-      statusLine += ` | F&G: ${this.currentSentiment.data.fearGreedIndex || 'N/A'}`;
+      // Handle both basic (data.fearGreedIndex) and advanced (details.fearGreed.value) structures
+      let fgValue = 'N/A';
+      if (this.currentSentiment.details?.fearGreed?.value) {
+        fgValue = this.currentSentiment.details.fearGreed.value;
+      } else if (this.currentSentiment.data?.fearGreedIndex) {
+        fgValue = this.currentSentiment.data.fearGreedIndex;
+      }
+      statusLine += ` | F&G: ${fgValue}`;
     }
     
     console.log(statusLine);

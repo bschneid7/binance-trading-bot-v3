@@ -202,7 +202,7 @@ export class AdvancedSentimentAnalyzer {
       const url = `${this.config.cryptoCompareApi}/news/?lang=EN&categories=BTC,ETH,Trading`;
       const data = await httpGet(url);
       
-      if (data?.Data) {
+      if (data?.Data && Array.isArray(data.Data)) {
         const articles = data.Data.slice(0, 20);
         let totalSentiment = 0;
         const analyzedNews = [];
