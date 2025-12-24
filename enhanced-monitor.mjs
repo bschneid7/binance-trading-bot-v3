@@ -29,10 +29,14 @@ import { FeeTracker } from './fee-tracker.mjs';
 import { SpreadOptimizer } from './spread-optimizer.mjs';
 import { OrderBatcher } from './order-batcher.mjs';
 import { GridTrailer } from './grid-trailer.mjs';
+import { MomentumFilter, MOMENTUM, MOMENTUM_NAMES } from './momentum-filter.mjs';
+import { OrderBookAnalyzer, ORDERBOOK_SIGNAL } from './orderbook-analyzer.mjs';
+import { SentimentAnalyzer, SENTIMENT } from './sentiment-analyzer.mjs';
+import { PricePredictor, PREDICTION } from './price-predictor.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '1.7.0-ENHANCED';
+const VERSION = '2.0.0-ENHANCED';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -70,9 +74,10 @@ const VOLATILITY_CONFIG = {
   ENABLED: true,
   ATR_PERIOD: 14,
   ATR_TIMEFRAME: '1h',
-  MIN_MULTIPLIER: 0.5,
-  MAX_MULTIPLIER: 2.0,
-  UPDATE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
+  MIN_MULTIPLIER: 0.4,  // Tighter grids in low volatility
+  MAX_MULTIPLIER: 2.5,  // Wider grids in high volatility
+  UPDATE_INTERVAL: 3 * 60 * 1000,  // 3 minutes - faster response
+  SMOOTHING_FACTOR: 0.4,  // Slightly faster adaptation
 };
 
 // Partial fill handling configuration
@@ -101,9 +106,11 @@ const POSITION_SIZING_CONFIG = {
 // Trend filter configuration
 const TREND_CONFIG = {
   ENABLED: true,
-  TIMEFRAMES: ['4h', '1d'],
-  FILTER_MODE: 'soft',  // 'soft' = warn only, 'hard' = block orders
-  UPDATE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
+  TIMEFRAMES: ['1h', '4h', '1d'],  // Added 1h for faster response
+  FILTER_MODE: 'hard',  // 'soft' = warn only, 'hard' = block orders in strong downtrends
+  UPDATE_INTERVAL: 3 * 60 * 1000,  // 3 minutes - faster updates
+  BLOCK_BUYS_ON_STRONG_BEARISH: true,  // Block new buys in strong downtrends
+  REDUCE_SIZE_ON_BEARISH: 0.5,  // Reduce position size by 50% in bearish trends
 };
 
 // Time-of-day optimization configuration
@@ -115,10 +122,12 @@ const TIME_OPTIMIZER_CONFIG = {
 // Correlation risk management configuration
 const CORRELATION_CONFIG = {
   ENABLED: true,
-  HIGH_CORRELATION_THRESHOLD: 0.8,
+  HIGH_CORRELATION_THRESHOLD: 0.75,  // Lowered for earlier detection
   LOW_CORRELATION_THRESHOLD: 0.3,
-  HIGH_CORRELATION_REDUCTION: 0.7,  // Reduce to 70% when high correlation
-  UPDATE_INTERVAL: 60 * 60 * 1000,  // 1 hour
+  HIGH_CORRELATION_REDUCTION: 0.5,  // Reduce to 50% when high correlation (more aggressive)
+  VERY_HIGH_CORRELATION_THRESHOLD: 0.9,  // Near-perfect correlation
+  VERY_HIGH_CORRELATION_REDUCTION: 0.3,  // Reduce to 30% in extreme cases
+  UPDATE_INTERVAL: 30 * 60 * 1000,  // 30 minutes - faster updates
 };
 
 // Adaptive grid spacing configuration
@@ -163,6 +172,38 @@ const GRID_TRAILER_CONFIG = {
   SHIFT_COOLDOWN_MS: 60 * 60 * 1000,  // 1 hour between shifts
 };
 
+// RSI/MACD Momentum filter configuration
+const MOMENTUM_CONFIG = {
+  ENABLED: true,
+  STRICTNESS: 'moderate',  // 'strict', 'moderate', 'loose'
+  UPDATE_INTERVAL: 2 * 60 * 1000,  // 2 minutes
+  RSI_OVERSOLD: 30,
+  RSI_OVERBOUGHT: 70,
+};
+
+// Order book analysis configuration
+const ORDERBOOK_CONFIG = {
+  ENABLED: true,
+  DEPTH_LEVELS: 20,
+  IMBALANCE_THRESHOLD: 0.3,
+  UPDATE_INTERVAL: 30 * 1000,  // 30 seconds
+};
+
+// Sentiment analysis configuration
+const SENTIMENT_CONFIG = {
+  ENABLED: true,
+  BUY_ON_EXTREME_FEAR: true,  // Contrarian strategy
+  REDUCE_ON_EXTREME_GREED: true,
+  UPDATE_INTERVAL: 15 * 60 * 1000,  // 15 minutes
+};
+
+// ML Price prediction configuration
+const PREDICTION_CONFIG = {
+  ENABLED: true,
+  UPDATE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
+  MIN_CONFIDENCE: 0.4,  // Minimum confidence to act on prediction
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -185,6 +226,10 @@ export class EnhancedMonitor {
       useSpreadOptimizer: SPREAD_OPTIMIZER_CONFIG.ENABLED,
       useOrderBatcher: ORDER_BATCHER_CONFIG.ENABLED,
       useGridTrailer: GRID_TRAILER_CONFIG.ENABLED,
+      useMomentumFilter: MOMENTUM_CONFIG.ENABLED,
+      useOrderBookAnalysis: ORDERBOOK_CONFIG.ENABLED,
+      useSentimentAnalysis: SENTIMENT_CONFIG.ENABLED,
+      usePricePrediction: PREDICTION_CONFIG.ENABLED,
       ...options,
     };
     
@@ -314,6 +359,36 @@ export class EnhancedMonitor {
       SHIFT_COOLDOWN_MS: GRID_TRAILER_CONFIG.SHIFT_COOLDOWN_MS,
     });
     this.lastGridShiftCheck = 0;
+    
+    // Momentum filter (RSI/MACD)
+    this.momentumFilter = new MomentumFilter({
+      strictness: MOMENTUM_CONFIG.STRICTNESS,
+      rsiOversold: MOMENTUM_CONFIG.RSI_OVERSOLD,
+      rsiOverbought: MOMENTUM_CONFIG.RSI_OVERBOUGHT,
+    });
+    this.currentMomentum = null;
+    this.lastMomentumUpdate = 0;
+    
+    // Order book analyzer
+    this.orderBookAnalyzer = new OrderBookAnalyzer({
+      depthLevels: ORDERBOOK_CONFIG.DEPTH_LEVELS,
+      imbalanceThreshold: ORDERBOOK_CONFIG.IMBALANCE_THRESHOLD,
+    });
+    this.currentOrderBook = null;
+    this.lastOrderBookUpdate = 0;
+    
+    // Sentiment analyzer
+    this.sentimentAnalyzer = new SentimentAnalyzer({
+      buyOnExtremeFear: SENTIMENT_CONFIG.BUY_ON_EXTREME_FEAR,
+      reduceOnExtremeGreed: SENTIMENT_CONFIG.REDUCE_ON_EXTREME_GREED,
+    });
+    this.currentSentiment = null;
+    this.lastSentimentUpdate = 0;
+    
+    // Price predictor
+    this.pricePredictor = new PricePredictor();
+    this.currentPrediction = null;
+    this.lastPredictionUpdate = 0;
     
     // Current market analysis
     this.currentVolatility = null;
@@ -457,7 +532,30 @@ export class EnhancedMonitor {
       console.log('🎯 Grid trailer initialized (proactive range shifting)');
     }
     
-    // 14. Setup graceful shutdown
+    // 14. Initialize momentum filter
+    if (this.options.useMomentumFilter) {
+      console.log('📊 Momentum filter initialized (RSI/MACD analysis)');
+      this.updateMomentumAnalysis();
+    }
+    
+    // 15. Initialize order book analyzer
+    if (this.options.useOrderBookAnalysis) {
+      console.log('📚 Order book analyzer initialized (support/resistance detection)');
+    }
+    
+    // 16. Initialize sentiment analyzer
+    if (this.options.useSentimentAnalysis) {
+      console.log('🎭 Sentiment analyzer initialized (Fear & Greed tracking)');
+      this.updateSentimentAnalysis();
+    }
+    
+    // 17. Initialize price predictor
+    if (this.options.usePricePrediction) {
+      console.log('🔮 Price predictor initialized (ML-based forecasting)');
+      this.updatePricePrediction();
+    }
+    
+    // 18. Setup graceful shutdown
     this.setupShutdown();
     
     console.log('\n✅ Enhanced monitor fully operational\n');
@@ -476,6 +574,10 @@ export class EnhancedMonitor {
     console.log(`  ✓ Spread-aware orders (${this.options.useSpreadOptimizer ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Smart order batching (${this.options.useOrderBatcher ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Proactive grid trailing (${this.options.useGridTrailer ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ RSI/MACD momentum filter (${this.options.useMomentumFilter ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Order book analysis (${this.options.useOrderBookAnalysis ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Sentiment analysis (${this.options.useSentimentAnalysis ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ ML price prediction (${this.options.usePricePrediction ? 'ENABLED' : 'DISABLED'})`);
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -727,6 +829,18 @@ export class EnhancedMonitor {
     // Update adaptive grid analysis
     this.maybeUpdateAdaptiveGrid();
     
+    // Update momentum analysis
+    await this.maybeUpdateMomentumAnalysis();
+    
+    // Update order book analysis
+    await this.maybeUpdateOrderBookAnalysis();
+    
+    // Update sentiment analysis
+    await this.maybeUpdateSentimentAnalysis();
+    
+    // Update price prediction
+    await this.maybeUpdatePricePrediction();
+    
     // Check for proactive grid shift
     await this.maybeShiftGrid();
     
@@ -747,6 +861,16 @@ export class EnhancedMonitor {
     // Add time session info if available
     if (this.currentTimeAnalysis && this.options.useTimeOptimizer) {
       statusLine += ` | Session: ${this.currentTimeAnalysis.session}`;
+    }
+    
+    // Add momentum info if available
+    if (this.currentMomentum && this.options.useMomentumFilter && this.currentMomentum.signal !== MOMENTUM.NEUTRAL) {
+      statusLine += ` | Mom: ${this.currentMomentum.signalName.split(' ')[0]}`;
+    }
+    
+    // Add sentiment info if available
+    if (this.currentSentiment && this.options.useSentimentAnalysis) {
+      statusLine += ` | F&G: ${this.currentSentiment.data.fearGreedIndex || 'N/A'}`;
     }
     
     console.log(statusLine);
@@ -1042,8 +1166,13 @@ export class EnhancedMonitor {
     
     // Get dynamic order size with combined multipliers
     let orderSize = this.getCurrentOrderSize() || filledTrade.amount;
-    const positionMultiplier = this.getCombinedPositionMultiplier();
-    orderSize *= positionMultiplier;
+    const positionResult = this.getCombinedPositionMultiplier();
+    orderSize *= positionResult.multiplier;
+    
+    // Log position adjustments if significant
+    if (positionResult.reasons.length > 0) {
+      console.log(`   📊 Position adjusted: ${positionResult.reasons.join(', ')}`);
+    }
     
     // Get grid spacing with combined multipliers
     let gridSpacing = (this.bot.upper_price - this.bot.lower_price) / this.bot.adjusted_grid_count;
@@ -1069,28 +1198,21 @@ export class EnhancedMonitor {
       return;
     }
     
-    // Check trend filter before placing order
-    if (this.options.useTrendFilter && this.currentTrend) {
-      const rec = this.currentTrend.recommendation;
-      
-      // In hard mode, block orders against strong trends
-      if (TREND_CONFIG.FILTER_MODE === 'hard') {
-        if (oppositeSide === 'buy' && !rec.allowBuys) {
-          console.log(`   🚫 Trend filter blocked BUY: ${rec.message}`);
-          return;
-        }
-        if (oppositeSide === 'sell' && !rec.allowSells) {
-          console.log(`   🚫 Trend filter blocked SELL: ${rec.message}`);
-          return;
-        }
+    // Check all filters before placing buy orders
+    if (oppositeSide === 'buy') {
+      const blockCheck = this.shouldBlockBuy();
+      if (blockCheck.blocked) {
+        console.log(`   🚫 BUY BLOCKED: ${blockCheck.reason}`);
+        return;
       }
-      
-      // In soft mode, just log a warning for counter-trend orders
-      if (TREND_CONFIG.FILTER_MODE === 'soft') {
-        const bias = oppositeSide === 'buy' ? rec.buyBias : rec.sellBias;
-        if (bias < -0.1) {
-          console.log(`   ⚠️  Counter-trend ${oppositeSide.toUpperCase()}: ${rec.message}`);
-        }
+    }
+    
+    // Check trend filter for sell orders
+    if (oppositeSide === 'sell' && this.options.useTrendFilter && this.currentTrend) {
+      const rec = this.currentTrend.recommendation;
+      if (TREND_CONFIG.FILTER_MODE === 'hard' && !rec.allowSells) {
+        console.log(`   🚫 Trend filter blocked SELL: ${rec.message}`);
+        return;
       }
     }
     
@@ -1818,6 +1940,238 @@ export class EnhancedMonitor {
     if (timeSinceLastAnalysis >= updateInterval) {
       await this.updateMarketAnalysis();
     }
+  }
+
+  /**
+   * Update momentum analysis (RSI/MACD)
+   */
+  async updateMomentumAnalysis() {
+    if (!this.options.useMomentumFilter) return;
+    
+    try {
+      const symbol = this.formatSymbol(this.bot.symbol);
+      this.currentMomentum = await this.momentumFilter.analyzeMomentum(this.exchange, symbol);
+      this.lastMomentumUpdate = Date.now();
+      
+      if (this.currentMomentum && this.currentMomentum.signal !== MOMENTUM.NEUTRAL) {
+        console.log(`\n📊 MOMENTUM: ${this.currentMomentum.signalName}`);
+        console.log(`   RSI: ${this.currentMomentum.indicators.rsi || 'N/A'}`);
+        console.log(`   MACD Histogram: ${this.currentMomentum.indicators.macd?.histogram?.toFixed(2) || 'N/A'}`);
+        console.log(`   ${this.currentMomentum.recommendation.message}`);
+      }
+    } catch (error) {
+      console.error(`❌ Momentum analysis error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Maybe update momentum analysis
+   */
+  async maybeUpdateMomentumAnalysis() {
+    if (!this.options.useMomentumFilter) return;
+    
+    const timeSinceLastUpdate = Date.now() - this.lastMomentumUpdate;
+    if (timeSinceLastUpdate >= MOMENTUM_CONFIG.UPDATE_INTERVAL) {
+      await this.updateMomentumAnalysis();
+    }
+  }
+
+  /**
+   * Update order book analysis
+   */
+  async updateOrderBookAnalysis() {
+    if (!this.options.useOrderBookAnalysis) return;
+    
+    try {
+      const symbol = this.formatSymbol(this.bot.symbol);
+      this.currentOrderBook = await this.orderBookAnalyzer.analyzeOrderBook(this.exchange, symbol);
+      this.lastOrderBookUpdate = Date.now();
+      
+      if (this.currentOrderBook && this.currentOrderBook.signal !== ORDERBOOK_SIGNAL.BALANCED) {
+        console.log(`\n📚 ORDER BOOK: ${this.currentOrderBook.signalName}`);
+        console.log(`   Imbalance: ${this.currentOrderBook.data.imbalancePercent}%`);
+        console.log(`   Bid Walls: ${this.currentOrderBook.data.bidWalls.length}, Ask Walls: ${this.currentOrderBook.data.askWalls.length}`);
+      }
+    } catch (error) {
+      console.error(`❌ Order book analysis error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Maybe update order book analysis
+   */
+  async maybeUpdateOrderBookAnalysis() {
+    if (!this.options.useOrderBookAnalysis) return;
+    
+    const timeSinceLastUpdate = Date.now() - this.lastOrderBookUpdate;
+    if (timeSinceLastUpdate >= ORDERBOOK_CONFIG.UPDATE_INTERVAL) {
+      await this.updateOrderBookAnalysis();
+    }
+  }
+
+  /**
+   * Update sentiment analysis
+   */
+  async updateSentimentAnalysis() {
+    if (!this.options.useSentimentAnalysis) return;
+    
+    try {
+      this.currentSentiment = await this.sentimentAnalyzer.analyzeSentiment();
+      this.lastSentimentUpdate = Date.now();
+      
+      if (this.currentSentiment && this.currentSentiment.sentiment !== SENTIMENT.NEUTRAL) {
+        console.log(`\n🎭 SENTIMENT: ${this.currentSentiment.sentimentName}`);
+        console.log(`   Fear & Greed Index: ${this.currentSentiment.data.fearGreedIndex}`);
+        console.log(`   ${this.currentSentiment.data.recommendation?.message || ''}`);
+      }
+    } catch (error) {
+      console.error(`❌ Sentiment analysis error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Maybe update sentiment analysis
+   */
+  async maybeUpdateSentimentAnalysis() {
+    if (!this.options.useSentimentAnalysis) return;
+    
+    const timeSinceLastUpdate = Date.now() - this.lastSentimentUpdate;
+    if (timeSinceLastUpdate >= SENTIMENT_CONFIG.UPDATE_INTERVAL) {
+      await this.updateSentimentAnalysis();
+    }
+  }
+
+  /**
+   * Update price prediction
+   */
+  async updatePricePrediction() {
+    if (!this.options.usePricePrediction) return;
+    
+    try {
+      const symbol = this.formatSymbol(this.bot.symbol);
+      this.currentPrediction = await this.pricePredictor.predict(this.exchange, symbol);
+      this.lastPredictionUpdate = Date.now();
+      
+      if (this.currentPrediction && 
+          this.currentPrediction.prediction !== PREDICTION.NEUTRAL &&
+          this.currentPrediction.confidence >= PREDICTION_CONFIG.MIN_CONFIDENCE) {
+        console.log(`\n🔮 PREDICTION: ${this.currentPrediction.predictionName}`);
+        console.log(`   Confidence: ${(this.currentPrediction.confidence * 100).toFixed(0)}%`);
+        console.log(`   Short-term: ${this.currentPrediction.data.shortTermTrend?.direction || 'N/A'}`);
+        console.log(`   ${this.currentPrediction.recommendation.message}`);
+      }
+    } catch (error) {
+      console.error(`❌ Price prediction error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Maybe update price prediction
+   */
+  async maybeUpdatePricePrediction() {
+    if (!this.options.usePricePrediction) return;
+    
+    const timeSinceLastUpdate = Date.now() - this.lastPredictionUpdate;
+    if (timeSinceLastUpdate >= PREDICTION_CONFIG.UPDATE_INTERVAL) {
+      await this.updatePricePrediction();
+    }
+  }
+
+  /**
+   * Get combined position size multiplier from all analysis modules
+   */
+  getCombinedPositionMultiplier() {
+    let multiplier = 1.0;
+    let reasons = [];
+    
+    // Trend filter adjustment
+    if (this.options.useTrendFilter && this.currentTrend) {
+      const trendRec = this.currentTrend.recommendation;
+      if (trendRec.buyBias < 0) {
+        multiplier *= (1 + trendRec.buyBias);  // Reduce on bearish
+        reasons.push(`Trend: ${(trendRec.buyBias * 100).toFixed(0)}%`);
+      }
+    }
+    
+    // Momentum filter adjustment
+    if (this.options.useMomentumFilter && this.currentMomentum) {
+      const momRec = this.currentMomentum.recommendation;
+      multiplier *= momRec.sizeMultiplier;
+      if (momRec.sizeMultiplier !== 1.0) {
+        reasons.push(`Momentum: ${(momRec.sizeMultiplier * 100).toFixed(0)}%`);
+      }
+    }
+    
+    // Sentiment adjustment
+    if (this.options.useSentimentAnalysis && this.currentSentiment) {
+      const sentRec = this.currentSentiment.data.recommendation;
+      if (sentRec && sentRec.sizeMultiplier) {
+        multiplier *= sentRec.sizeMultiplier;
+        if (sentRec.sizeMultiplier !== 1.0) {
+          reasons.push(`Sentiment: ${(sentRec.sizeMultiplier * 100).toFixed(0)}%`);
+        }
+      }
+    }
+    
+    // Prediction adjustment
+    if (this.options.usePricePrediction && this.currentPrediction) {
+      const predRec = this.currentPrediction.recommendation;
+      if (predRec.sizeMultiplier && this.currentPrediction.confidence >= PREDICTION_CONFIG.MIN_CONFIDENCE) {
+        multiplier *= predRec.sizeMultiplier;
+        if (predRec.sizeMultiplier !== 1.0) {
+          reasons.push(`Prediction: ${(predRec.sizeMultiplier * 100).toFixed(0)}%`);
+        }
+      }
+    }
+    
+    // Correlation adjustment
+    if (this.options.useCorrelationRisk && this.currentCorrelationAnalysis) {
+      multiplier *= this.currentCorrelationAnalysis.overallMultiplier;
+      if (this.currentCorrelationAnalysis.overallMultiplier !== 1.0) {
+        reasons.push(`Correlation: ${(this.currentCorrelationAnalysis.overallMultiplier * 100).toFixed(0)}%`);
+      }
+    }
+    
+    // Clamp to reasonable bounds
+    multiplier = Math.max(0.3, Math.min(1.5, multiplier));
+    
+    return { multiplier, reasons };
+  }
+
+  /**
+   * Check if buy should be blocked based on all filters
+   */
+  shouldBlockBuy() {
+    // Check trend filter (hard mode)
+    if (this.options.useTrendFilter && TREND_CONFIG.FILTER_MODE === 'hard' && this.currentTrend) {
+      if (this.currentTrend.trend <= -2 && TREND_CONFIG.BLOCK_BUYS_ON_STRONG_BEARISH) {
+        return { blocked: true, reason: 'Strong bearish trend detected' };
+      }
+    }
+    
+    // Check momentum filter
+    if (this.options.useMomentumFilter && this.currentMomentum) {
+      if (!this.currentMomentum.recommendation.allowBuy) {
+        return { blocked: true, reason: this.currentMomentum.recommendation.message };
+      }
+    }
+    
+    // Check order book
+    if (this.options.useOrderBookAnalysis && this.currentOrderBook) {
+      if (this.currentOrderBook.recommendation?.avoidBuy) {
+        return { blocked: true, reason: 'Strong selling pressure in order book' };
+      }
+    }
+    
+    // Check sentiment for pause conditions
+    if (this.options.useSentimentAnalysis) {
+      const pauseCheck = this.sentimentAnalyzer.shouldPauseTrading();
+      if (pauseCheck.pause) {
+        return { blocked: true, reason: pauseCheck.reason };
+      }
+    }
+    
+    return { blocked: false, reason: null };
   }
 
   /**
