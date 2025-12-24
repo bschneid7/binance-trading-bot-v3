@@ -2,7 +2,7 @@
 
 /**
  * Grid Trading Bot - Health Check Script
- * Version: 1.3.0
+ * Version: 1.3.1
  * 
  * Verifies bot health by checking:
  * 1. Monitor process status
@@ -179,12 +179,16 @@ function checkLogActivity(botName) {
       if (lastPrice && lastTimestamp) break;
     }
     
-    // Check for errors in recent lines
+    // Check for errors in recent lines (only in the log file, not journal history)
     const hasErrors = recentLines.some(line => 
-      line.toLowerCase().includes('error') || 
-      line.toLowerCase().includes('failed') ||
-      line.includes('TypeError') ||
-      line.includes('ReferenceError')
+      (line.toLowerCase().includes('error') || 
+       line.toLowerCase().includes('failed') ||
+       line.includes('TypeError') ||
+       line.includes('ReferenceError')) &&
+      // Exclude common non-critical messages
+      !line.includes('No errors') &&
+      !line.includes('error handler') &&
+      !line.includes('ErrorLogger')
     );
     
     return {
