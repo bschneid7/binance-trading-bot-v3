@@ -2,13 +2,15 @@
 
 /**
  * Grid Trading Bot - Health Check Script
- * Version: 1.0.0
+ * Version: 1.3.3
  * 
  * Verifies bot health by checking:
  * 1. Monitor process status
  * 2. Recent log activity
  * 3. Open orders on Binance.US
  * 4. Database connectivity
+ * 5. DCA Dip Buyer status
+ * 6. Unrealized vs Realized P&L breakdown
  */
 
 import ccxt from 'ccxt';
@@ -31,6 +33,8 @@ const colors = {
   red: '\x1b[31m',
   yellow: '\x1b[33m',
   blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  magenta: '\x1b[35m',
   reset: '\x1b[0m',
   bold: '\x1b[1m'
 };
@@ -86,6 +90,95 @@ function checkProcess(botName) {
 }
 
 /**
+ * Check systemd service status
+ */
+function checkSystemdService(serviceName) {
+  try {
+    const result = execSync(`systemctl is-active ${serviceName} 2>/dev/null`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    return result.trim() === 'active';
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Get systemd service details
+ */
+function getServiceDetails(serviceName) {
+  try {
+    const result = execSync(`systemctl show ${serviceName} --property=MainPID,ActiveState,SubState,MemoryCurrent 2>/dev/null`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    
+    const props = {};
+    for (const line of result.trim().split('\n')) {
+      const [key, value] = line.split('=');
+      props[key] = value;
+    }
+    
+    return {
+      pid: props.MainPID || 'N/A',
+      state: props.ActiveState || 'unknown',
+      subState: props.SubState || 'unknown',
+      memory: props.MemoryCurrent ? (parseInt(props.MemoryCurrent) / 1024 / 1024).toFixed(1) + ' MB' : 'N/A'
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Check systemd service for CURRENT session errors only
+ * Only shows errors from the current run - ignores errors from previous runs that were resolved by restart
+ */
+function checkCurrentSessionErrors(serviceName) {
+  try {
+    // First, get the timestamp when the service was last started
+    const startTimeResult = execSync(
+      `systemctl show ${serviceName} --property=ActiveEnterTimestamp 2>/dev/null`,
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    
+    const startTimeMatch = startTimeResult.match(/ActiveEnterTimestamp=(.+)/);
+    if (!startTimeMatch || !startTimeMatch[1] || startTimeMatch[1] === 'n/a') {
+      // Service might not exist or never started
+      return { hasErrors: false, count: 0, recentErrors: [], serviceNotFound: true };
+    }
+    
+    const serviceStartTime = startTimeMatch[1].trim();
+    
+    // Now check for errors ONLY since the service started (current session)
+    const result = execSync(
+      `journalctl -u ${serviceName} --since "${serviceStartTime}" --no-pager 2>/dev/null | grep -iE "error|failed|failure|exception" | grep -v "No errors" | grep -v "error handler" | grep -v "ErrorLogger" | tail -5`,
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }
+    );
+    
+    const errors = result.trim().split('\n').filter(line => line.trim());
+    
+    if (errors.length > 0) {
+      return {
+        hasErrors: true,
+        count: errors.length,
+        recentErrors: errors.slice(0, 3),
+        sessionStart: serviceStartTime
+      };
+    }
+    
+    return { hasErrors: false, count: 0, recentErrors: [], sessionStart: serviceStartTime };
+  } catch (e) {
+    // grep returns exit code 1 if no matches, which is good (no errors)
+    return { hasErrors: false, count: 0, recentErrors: [] };
+  }
+}
+
+/**
  * Check log file for recent activity
  * Checks both enhanced monitor logs and legacy logs
  */
@@ -133,12 +226,16 @@ function checkLogActivity(botName) {
       if (lastPrice && lastTimestamp) break;
     }
     
-    // Check for errors in recent lines
+    // Check for errors in recent lines (only in the log file, not journal history)
     const hasErrors = recentLines.some(line => 
-      line.toLowerCase().includes('error') || 
-      line.toLowerCase().includes('failed') ||
-      line.includes('TypeError') ||
-      line.includes('ReferenceError')
+      (line.toLowerCase().includes('error') || 
+       line.toLowerCase().includes('failed') ||
+       line.includes('TypeError') ||
+       line.includes('ReferenceError')) &&
+      // Exclude common non-critical messages
+      !line.includes('No errors') &&
+      !line.includes('error handler') &&
+      !line.includes('ErrorLogger')
     );
     
     return {
@@ -313,6 +410,107 @@ function calculate24hPnL(db, botName) {
 }
 
 /**
+ * Calculate unrealized P&L for crypto holdings
+ * Compares current value to cost basis from recent buys
+ */
+function calculateUnrealizedPnL(db, currentEquity, snapshot24hAgo) {
+  const result = {
+    btc: { unrealized: 0, costBasis: 0, currentValue: 0, holdings: 0 },
+    eth: { unrealized: 0, costBasis: 0, currentValue: 0, holdings: 0 },
+    sol: { unrealized: 0, costBasis: 0, currentValue: 0, holdings: 0 },
+    total: 0
+  };
+  
+  if (!currentEquity || !snapshot24hAgo) return result;
+  
+  // Calculate unrealized P&L based on holdings change and price change
+  // BTC
+  const btcHoldingsChange = currentEquity.btc_balance - snapshot24hAgo.btc_balance;
+  const btcPriceChange = currentEquity.btc_price - snapshot24hAgo.btc_price;
+  // Unrealized from existing holdings (price movement)
+  const btcUnrealizedFromPrice = snapshot24hAgo.btc_balance * btcPriceChange;
+  // Unrealized from new holdings (bought at higher/lower than current)
+  const btcUnrealizedFromNewHoldings = btcHoldingsChange * (currentEquity.btc_price - snapshot24hAgo.btc_price);
+  result.btc.unrealized = btcUnrealizedFromPrice;
+  result.btc.holdings = currentEquity.btc_balance;
+  result.btc.currentValue = currentEquity.btc_balance * currentEquity.btc_price;
+  
+  // ETH
+  const ethPriceChange = currentEquity.eth_price - snapshot24hAgo.eth_price;
+  result.eth.unrealized = snapshot24hAgo.eth_balance * ethPriceChange;
+  result.eth.holdings = currentEquity.eth_balance;
+  result.eth.currentValue = currentEquity.eth_balance * currentEquity.eth_price;
+  
+  // SOL
+  const solPriceChange = currentEquity.sol_price - snapshot24hAgo.sol_price;
+  result.sol.unrealized = snapshot24hAgo.sol_balance * solPriceChange;
+  result.sol.holdings = currentEquity.sol_balance;
+  result.sol.currentValue = currentEquity.sol_balance * currentEquity.sol_price;
+  
+  result.total = result.btc.unrealized + result.eth.unrealized + result.sol.unrealized;
+  
+  return result;
+}
+
+/**
+ * Check DCA Dip Buyer status
+ */
+function checkDipBuyer(db) {
+  const result = {
+    serviceRunning: false,
+    serviceDetails: null,
+    positions: [],
+    stats: {
+      totalTrades: 0,
+      totalProfit: 0,
+      openPositions: 0,
+      deployedCapital: 0
+    }
+  };
+  
+  // Check if dip-buyer service is running
+  result.serviceRunning = checkSystemdService('dip-buyer');
+  if (result.serviceRunning) {
+    result.serviceDetails = getServiceDetails('dip-buyer');
+  }
+  
+  // Check for dip_positions table and get data
+  try {
+    // Check if table exists
+    const tableExists = db.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='dip_positions'"
+    ).get();
+    
+    if (tableExists) {
+      // Get open positions
+      const openPositions = db.db.prepare(
+        "SELECT * FROM dip_positions WHERE status = 'open' ORDER BY entry_time DESC"
+      ).all();
+      
+      result.positions = openPositions;
+      result.stats.openPositions = openPositions.length;
+      
+      // Calculate deployed capital
+      for (const pos of openPositions) {
+        result.stats.deployedCapital += pos.entry_price * pos.amount;
+      }
+      
+      // Get closed positions for stats
+      const closedPositions = db.db.prepare(
+        "SELECT * FROM dip_positions WHERE status = 'closed'"
+      ).all();
+      
+      result.stats.totalTrades = closedPositions.length;
+      result.stats.totalProfit = closedPositions.reduce((sum, pos) => sum + (pos.profit || 0), 0);
+    }
+  } catch (e) {
+    // Table doesn't exist yet or other error - that's okay
+  }
+  
+  return result;
+}
+
+/**
  * Run health check for a single bot
  */
 async function checkBotHealth(botName, exchange, db) {
@@ -333,7 +531,7 @@ async function checkBotHealth(botName, exchange, db) {
   if (dbStatus.success) {
     console.log(success(`Bot found in database`));
     console.log(`   Status: ${dbStatus.status === 'running' ? '🟢 Running' : '🔴 Stopped'}`);
-    console.log(`   Orders in DB: ${dbStatus.dbOrders}`);
+    console.log(`   Active Orders in DB: ${dbStatus.dbOrders}`);
     console.log(`   Total Trades: ${dbStatus.totalTrades}`);
     console.log(`   Win Rate: ${dbStatus.winRate}%`);
     console.log(`   Total P&L: $${dbStatus.totalPnL.toFixed(2)}`);
@@ -404,6 +602,21 @@ async function checkBotHealth(botName, exchange, db) {
     }
   }
   
+  // 3b. Check systemd journal for errors in CURRENT session only
+  // Map: live-btc-bot -> enhanced-btc-bot
+  const serviceName = botName.replace('live-', 'enhanced-');
+  const systemdErrors = checkCurrentSessionErrors(serviceName);
+  
+  if (systemdErrors.hasErrors) {
+    console.log(warning(`Errors in current session (${systemdErrors.count})`));
+    for (const err of systemdErrors.recentErrors) {
+      // Extract just the relevant part of the error message
+      const shortErr = err.length > 80 ? err.substring(0, 80) + '...' : err;
+      console.log(`   ${colors.red}→ ${shortErr}${colors.reset}`);
+    }
+    results.issues.push('Errors in current session');
+  }
+  
   // 4. Check Binance orders (only if bot should be running)
   if (dbStatus.status === 'running' || processStatus.running) {
     console.log(`\n${header('📈 Binance.US Orders:')}`);
@@ -442,6 +655,71 @@ async function checkBotHealth(botName, exchange, db) {
   }
   
   return results;
+}
+
+/**
+ * Display DCA Dip Buyer status
+ */
+function displayDipBuyerStatus(dipBuyerStatus, tickers) {
+  console.log(`\n${header('━'.repeat(60))}`);
+  console.log(header(`  ${colors.magenta}DCA DIP BUYER${colors.reset}`));
+  console.log(`${header('━'.repeat(60))}\n`);
+  
+  // Service status
+  console.log(header('🔄 Service Status:'));
+  if (dipBuyerStatus.serviceRunning) {
+    console.log(success(`Dip Buyer service is running`));
+    if (dipBuyerStatus.serviceDetails) {
+      console.log(`   PID: ${dipBuyerStatus.serviceDetails.pid}`);
+      console.log(`   State: ${dipBuyerStatus.serviceDetails.state} (${dipBuyerStatus.serviceDetails.subState})`);
+      console.log(`   Memory: ${dipBuyerStatus.serviceDetails.memory}`);
+    }
+  } else {
+    console.log(warning(`Dip Buyer service is NOT running`));
+  }
+  
+  // Configuration
+  console.log(`\n${header('⚙️  Configuration:')}`);
+  console.log(`   Dip Threshold: -3.0%`);
+  console.log(`   Order Size: $100`);
+  console.log(`   Take Profit: +2.5%`);
+  console.log(`   Stop Loss: -5.0%`);
+  console.log(`   Max Deployed: $1,000`);
+  
+  // Open positions
+  console.log(`\n${header('📊 Open Positions:')}`);
+  if (dipBuyerStatus.positions.length > 0) {
+    for (const pos of dipBuyerStatus.positions) {
+      const symbol = pos.symbol;
+      const coin = symbol.split('/')[0];
+      const currentPrice = tickers[symbol]?.last || 0;
+      const entryValue = pos.entry_price * pos.amount;
+      const currentValue = currentPrice * pos.amount;
+      const pnl = currentValue - entryValue;
+      const pnlPct = ((currentPrice - pos.entry_price) / pos.entry_price) * 100;
+      
+      const pnlColor = pnl >= 0 ? colors.green : colors.red;
+      const pnlSign = pnl >= 0 ? '+' : '';
+      
+      console.log(`   ${colors.cyan}${symbol}${colors.reset}:`);
+      console.log(`      Amount: ${pos.amount.toFixed(6)} ${coin}`);
+      console.log(`      Entry: $${pos.entry_price.toFixed(2)} | Current: $${currentPrice.toFixed(2)}`);
+      console.log(`      Value: $${entryValue.toFixed(2)} → $${currentValue.toFixed(2)}`);
+      console.log(`      P&L: ${pnlColor}${pnlSign}$${pnl.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)${colors.reset}`);
+      console.log(`      Entry Time: ${pos.entry_time}`);
+    }
+  } else {
+    console.log(info(`No open positions`));
+  }
+  
+  // Statistics
+  console.log(`\n${header('📈 Statistics:')}`);
+  console.log(`   Open Positions: ${dipBuyerStatus.stats.openPositions}`);
+  console.log(`   Capital Deployed: $${dipBuyerStatus.stats.deployedCapital.toFixed(2)}`);
+  console.log(`   Completed Trades: ${dipBuyerStatus.stats.totalTrades}`);
+  const profitColor = dipBuyerStatus.stats.totalProfit >= 0 ? colors.green : colors.red;
+  const profitSign = dipBuyerStatus.stats.totalProfit >= 0 ? '+' : '';
+  console.log(`   Total Profit: ${profitColor}${profitSign}$${dipBuyerStatus.stats.totalProfit.toFixed(2)}${colors.reset}`);
 }
 
 /**
@@ -484,20 +762,30 @@ async function runHealthCheck() {
     return;
   }
   
-  console.log(info(`Found ${bots.length} bot(s) configured`));
+  console.log(info(`Found ${bots.length} grid bot(s) configured`));
   
   // Fetch current balances and prices for equity calculation
   let currentEquity = null;
   let allCoinsEquity = null;
+  let tickers = null;
+  let capitalDeployment = null;
   try {
     const balance = await exchange.fetchBalance();
-    const tickers = await exchange.fetchTickers(['BTC/USD', 'ETH/USD', 'SOL/USD']);
+    tickers = await exchange.fetchTickers(['BTC/USD', 'ETH/USD', 'SOL/USD']);
     
     // Monitored coins (BTC, ETH, SOL, USD)
     const usdBalance = balance.USD?.total || 0;
+    const usdFree = balance.USD?.free || 0;
+    const usdInOrders = balance.USD?.used || 0;
     const btcBalance = balance.BTC?.total || 0;
+    const btcFree = balance.BTC?.free || 0;
+    const btcInOrders = balance.BTC?.used || 0;
     const ethBalance = balance.ETH?.total || 0;
+    const ethFree = balance.ETH?.free || 0;
+    const ethInOrders = balance.ETH?.used || 0;
     const solBalance = balance.SOL?.total || 0;
+    const solFree = balance.SOL?.free || 0;
+    const solInOrders = balance.SOL?.used || 0;
     
     const btcPrice = tickers['BTC/USD']?.last || 0;
     const ethPrice = tickers['ETH/USD']?.last || 0;
@@ -517,6 +805,27 @@ async function runHealthCheck() {
       sol_balance: solBalance,
       sol_price: solPrice,
       total_equity_usd: monitoredEquityUsd
+    };
+    
+    // Calculate capital deployment (funds tied up in orders)
+    const btcInOrdersUsd = btcInOrders * btcPrice;
+    const ethInOrdersUsd = ethInOrders * ethPrice;
+    const solInOrdersUsd = solInOrders * solPrice;
+    const totalInOrders = usdInOrders + btcInOrdersUsd + ethInOrdersUsd + solInOrdersUsd;
+    const totalFree = usdFree + (btcFree * btcPrice) + (ethFree * ethPrice) + (solFree * solPrice);
+    const utilizationPct = monitoredEquityUsd > 0 ? (totalInOrders / monitoredEquityUsd) * 100 : 0;
+    
+    capitalDeployment = {
+      usdInOrders,
+      btcInOrders,
+      btcInOrdersUsd,
+      ethInOrders,
+      ethInOrdersUsd,
+      solInOrders,
+      solInOrdersUsd,
+      totalInOrders,
+      totalFree,
+      utilizationPct
     };
     
     // Calculate total equity from ALL coins
@@ -637,6 +946,10 @@ async function runHealthCheck() {
     }
   }
   
+  // Check DCA Dip Buyer status
+  const dipBuyerStatus = checkDipBuyer(db);
+  displayDipBuyerStatus(dipBuyerStatus, tickers || {});
+  
   // Overall summary
   console.log('\n' + '═'.repeat(60));
   console.log(header('       OVERALL SUMMARY'));
@@ -645,16 +958,45 @@ async function runHealthCheck() {
   const healthyBots = results.filter(r => r.healthy && r.issues.length === 0);
   const issueBots = results.filter(r => r.issues.length > 0);
   
-  console.log(`Total Bots: ${bots.length}`);
-  console.log(`${colors.green}Healthy: ${healthyBots.length}${colors.reset}`);
-  console.log(`${colors.red}Issues: ${issueBots.length}${colors.reset}`);
+  // Bot status summary
+  console.log(header('Bot Status:'));
+  console.log(`   Grid Bots: ${bots.length} (${colors.green}${healthyBots.length} healthy${colors.reset}, ${colors.red}${issueBots.length} with issues${colors.reset})`);
+  console.log(`   Dip Buyer: ${dipBuyerStatus.serviceRunning ? `${colors.green}Running${colors.reset}` : `${colors.red}Stopped${colors.reset}`}`);
   
-  // P&L Summary
+  // P&L Summary (including dip buyer)
+  const combinedTotalProfit = totalPnL + dipBuyerStatus.stats.totalProfit;
   console.log(`\n${header('P&L Summary:')}`);  
-  console.log(`   Total P&L (All Time): $${totalPnL.toFixed(2)}`);
+  console.log(`   Grid Bots P&L (All Time): $${totalPnL.toFixed(2)}`);
+  console.log(`   Dip Buyer P&L (All Time): $${dipBuyerStatus.stats.totalProfit.toFixed(2)}`);
+  console.log(`   ${colors.bold}Combined P&L: $${combinedTotalProfit.toFixed(2)}${colors.reset}`);
   const pnl24hColor = total24hPnL >= 0 ? colors.green : colors.red;
   const pnl24hSign = total24hPnL >= 0 ? '+' : '';
-  console.log(`   24h Realized P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
+  console.log(`   24h Grid P&L: ${pnl24hColor}${pnl24hSign}$${total24hPnL.toFixed(2)}${colors.reset} (${total24hTrades} trades)`);
+  
+  // Capital Deployment Summary
+  if (capitalDeployment) {
+    console.log(`\n${header('Capital Deployment:')}`);  
+    console.log(`   ${colors.bold}Total in Grid Orders: $${capitalDeployment.totalInOrders.toFixed(2)}${colors.reset}`);
+    console.log(`      USD in buy orders: $${capitalDeployment.usdInOrders.toFixed(2)}`);
+    if (capitalDeployment.btcInOrdersUsd > 0.01) {
+      console.log(`      BTC in sell orders: ${capitalDeployment.btcInOrders.toFixed(6)} ($${capitalDeployment.btcInOrdersUsd.toFixed(2)})`);
+    }
+    if (capitalDeployment.ethInOrdersUsd > 0.01) {
+      console.log(`      ETH in sell orders: ${capitalDeployment.ethInOrders.toFixed(6)} ($${capitalDeployment.ethInOrdersUsd.toFixed(2)})`);
+    }
+    if (capitalDeployment.solInOrdersUsd > 0.01) {
+      console.log(`      SOL in sell orders: ${capitalDeployment.solInOrders.toFixed(6)} ($${capitalDeployment.solInOrdersUsd.toFixed(2)})`);
+    }
+    console.log(`   Available (not in orders): $${capitalDeployment.totalFree.toFixed(2)}`);
+    
+    // Utilization bar
+    const utilPct = capitalDeployment.utilizationPct;
+    const barLength = 20;
+    const filledLength = Math.round((utilPct / 100) * barLength);
+    const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
+    const utilColor = utilPct >= 70 ? colors.green : utilPct >= 40 ? colors.yellow : colors.red;
+    console.log(`   Capital Utilization: ${utilColor}[${bar}] ${utilPct.toFixed(1)}%${colors.reset}`);
+  }
   
   // Equity Summary
   if (currentEquity) {
@@ -697,10 +1039,57 @@ async function runHealthCheck() {
       const equityChangePct = (equityChange / snapshot24hAgo.total_equity_usd) * 100;
       const eqColor = equityChange >= 0 ? colors.green : colors.red;
       const eqSign = equityChange >= 0 ? '+' : '';
-      console.log(`\n   24h Equity Change (Monitored): ${eqColor}${eqSign}$${equityChange.toFixed(2)} (${eqSign}${equityChangePct.toFixed(2)}%)${colors.reset}`);
-      console.log(`   (Monitored equity 24h ago: $${snapshot24hAgo.total_equity_usd.toFixed(2)})`);
+      
+      // Calculate unrealized P&L breakdown
+      const unrealizedPnL = calculateUnrealizedPnL(db, currentEquity, snapshot24hAgo);
+      
+      // 24h P&L Breakdown section
+      console.log(`\n${header('   24h P&L Breakdown:')}`);  
+      console.log(`   ┌─────────────────────────────────────────────────────┐`);
+      
+      // Realized P&L (from completed trades)
+      const realized24hColor = total24hPnL >= 0 ? colors.green : colors.red;
+      const realized24hSign = total24hPnL >= 0 ? '+' : '';
+      console.log(`   │ ${colors.green}✓ Realized P&L${colors.reset} (completed trades):  ${realized24hColor}${realized24hSign}$${total24hPnL.toFixed(2)}${colors.reset}`.padEnd(68) + '│');
+      
+      // Unrealized P&L (from price movement on holdings)
+      const unrealizedColor = unrealizedPnL.total >= 0 ? colors.green : colors.red;
+      const unrealizedSign = unrealizedPnL.total >= 0 ? '+' : '';
+      console.log(`   │ ${colors.yellow}◷ Unrealized P&L${colors.reset} (price movement):  ${unrealizedColor}${unrealizedSign}$${unrealizedPnL.total.toFixed(2)}${colors.reset}`.padEnd(68) + '│');
+      
+      // Show breakdown by coin if significant
+      if (Math.abs(unrealizedPnL.btc.unrealized) > 1) {
+        const btcColor = unrealizedPnL.btc.unrealized >= 0 ? colors.green : colors.red;
+        const btcSign = unrealizedPnL.btc.unrealized >= 0 ? '+' : '';
+        console.log(`   │    BTC: ${btcColor}${btcSign}$${unrealizedPnL.btc.unrealized.toFixed(2)}${colors.reset}`.padEnd(60) + '│');
+      }
+      if (Math.abs(unrealizedPnL.eth.unrealized) > 1) {
+        const ethColor = unrealizedPnL.eth.unrealized >= 0 ? colors.green : colors.red;
+        const ethSign = unrealizedPnL.eth.unrealized >= 0 ? '+' : '';
+        console.log(`   │    ETH: ${ethColor}${ethSign}$${unrealizedPnL.eth.unrealized.toFixed(2)}${colors.reset}`.padEnd(60) + '│');
+      }
+      if (Math.abs(unrealizedPnL.sol.unrealized) > 1) {
+        const solColor = unrealizedPnL.sol.unrealized >= 0 ? colors.green : colors.red;
+        const solSign = unrealizedPnL.sol.unrealized >= 0 ? '+' : '';
+        console.log(`   │    SOL: ${solColor}${solSign}$${unrealizedPnL.sol.unrealized.toFixed(2)}${colors.reset}`.padEnd(60) + '│');
+      }
+      
+      console.log(`   ├─────────────────────────────────────────────────────┤`);
+      
+      // Net equity change
+      console.log(`   │ ${colors.bold}Net Equity Change${colors.reset}:              ${eqColor}${eqSign}$${equityChange.toFixed(2)} (${eqSign}${equityChangePct.toFixed(2)}%)${colors.reset}`.padEnd(68) + '│');
+      console.log(`   └─────────────────────────────────────────────────────┘`);
+      
+      // Explanation note
+      if (equityChange < 0 && total24hPnL >= 0) {
+        console.log(`\n   ${colors.cyan}ℹ️  Note: Your realized profits are positive. The equity drop is from${colors.reset}`);
+        console.log(`   ${colors.cyan}   unrealized losses (market price movement on your holdings).${colors.reset}`);
+        console.log(`   ${colors.cyan}   These will recover when prices bounce back.${colors.reset}`);
+      }
+      
+      console.log(`\n   (Equity 24h ago: $${snapshot24hAgo.total_equity_usd.toFixed(2)})`);
     } else {
-      console.log(`\n   ${colors.yellow}24h Equity Change: Not enough history yet${colors.reset}`);
+      console.log(`\n   ${colors.yellow}24h P&L Breakdown: Not enough history yet${colors.reset}`);
       console.log(`   (First snapshot recorded - check back in 24 hours)`);
     }
   }
