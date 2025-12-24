@@ -2,7 +2,7 @@
 
 /**
  * Grid Trading Bot - Health Check Script
- * Version: 1.3.2
+ * Version: 1.3.3
  * 
  * Verifies bot health by checking:
  * 1. Monitor process status
@@ -132,14 +132,28 @@ function getServiceDetails(serviceName) {
 }
 
 /**
- * Check systemd journal for recent errors (last hour only)
- * This catches service-level failures without flagging old historical errors
+ * Check systemd service for CURRENT session errors only
+ * Only shows errors from the current run - ignores errors from previous runs that were resolved by restart
  */
-function checkRecentSystemdErrors(serviceName) {
+function checkCurrentSessionErrors(serviceName) {
   try {
-    // Check for errors in the last hour only
+    // First, get the timestamp when the service was last started
+    const startTimeResult = execSync(
+      `systemctl show ${serviceName} --property=ActiveEnterTimestamp 2>/dev/null`,
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    
+    const startTimeMatch = startTimeResult.match(/ActiveEnterTimestamp=(.+)/);
+    if (!startTimeMatch || !startTimeMatch[1] || startTimeMatch[1] === 'n/a') {
+      // Service might not exist or never started
+      return { hasErrors: false, count: 0, recentErrors: [], serviceNotFound: true };
+    }
+    
+    const serviceStartTime = startTimeMatch[1].trim();
+    
+    // Now check for errors ONLY since the service started (current session)
     const result = execSync(
-      `journalctl -u ${serviceName} --since "1 hour ago" --no-pager 2>/dev/null | grep -iE "error|failed|failure" | grep -v "No errors" | tail -5`,
+      `journalctl -u ${serviceName} --since "${serviceStartTime}" --no-pager 2>/dev/null | grep -iE "error|failed|failure|exception" | grep -v "No errors" | grep -v "error handler" | grep -v "ErrorLogger" | tail -5`,
       {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe']
@@ -152,11 +166,12 @@ function checkRecentSystemdErrors(serviceName) {
       return {
         hasErrors: true,
         count: errors.length,
-        recentErrors: errors.slice(0, 3)  // Return up to 3 most recent
+        recentErrors: errors.slice(0, 3),
+        sessionStart: serviceStartTime
       };
     }
     
-    return { hasErrors: false, count: 0, recentErrors: [] };
+    return { hasErrors: false, count: 0, recentErrors: [], sessionStart: serviceStartTime };
   } catch (e) {
     // grep returns exit code 1 if no matches, which is good (no errors)
     return { hasErrors: false, count: 0, recentErrors: [] };
@@ -587,19 +602,19 @@ async function checkBotHealth(botName, exchange, db) {
     }
   }
   
-  // 3b. Check systemd journal for recent errors (last hour only)
+  // 3b. Check systemd journal for errors in CURRENT session only
   // Map: live-btc-bot -> enhanced-btc-bot
   const serviceName = botName.replace('live-', 'enhanced-');
-  const systemdErrors = checkRecentSystemdErrors(serviceName);
+  const systemdErrors = checkCurrentSessionErrors(serviceName);
   
   if (systemdErrors.hasErrors) {
-    console.log(warning(`Service errors in last hour (${systemdErrors.count})`));
+    console.log(warning(`Errors in current session (${systemdErrors.count})`));
     for (const err of systemdErrors.recentErrors) {
       // Extract just the relevant part of the error message
       const shortErr = err.length > 80 ? err.substring(0, 80) + '...' : err;
       console.log(`   ${colors.red}→ ${shortErr}${colors.reset}`);
     }
-    results.issues.push('Recent service errors');
+    results.issues.push('Errors in current session');
   }
   
   // 4. Check Binance orders (only if bot should be running)
