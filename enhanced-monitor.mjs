@@ -33,10 +33,13 @@ import { MomentumFilter, MOMENTUM, MOMENTUM_NAMES } from './momentum-filter.mjs'
 import { OrderBookAnalyzer, ORDERBOOK_SIGNAL } from './orderbook-analyzer.mjs';
 import { SentimentAnalyzer, SENTIMENT } from './sentiment-analyzer.mjs';
 import { PricePredictor, PREDICTION } from './price-predictor.mjs';
+// Advanced ML modules
+import { AdvancedMLPredictor } from './ml-predictor-advanced.mjs';
+import { AdvancedSentimentAnalyzer } from './sentiment-analyzer-advanced.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '2.0.0-ENHANCED';
+const VERSION = '2.1.0-ADVANCED-ML';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -204,6 +207,15 @@ const PREDICTION_CONFIG = {
   MIN_CONFIDENCE: 0.4,  // Minimum confidence to act on prediction
 };
 
+// Advanced ML configuration
+const ADVANCED_ML_CONFIG = {
+  ENABLED: true,  // Use advanced ML models instead of basic
+  USE_ENSEMBLE: true,  // Use ensemble prediction (EMA, BB, RSI, MACD, Ichimoku, etc.)
+  USE_MULTI_SOURCE_SENTIMENT: true,  // Use multiple news/sentiment sources
+  UPDATE_INTERVAL: 3 * 60 * 1000,  // 3 minutes for advanced analysis
+  MIN_CONSENSUS: 0.6,  // Minimum model consensus for strong signals
+};
+
 /**
  * Enhanced Monitor Class
  * Combines all three improvements into a single cohesive monitor
@@ -230,6 +242,9 @@ export class EnhancedMonitor {
       useOrderBookAnalysis: ORDERBOOK_CONFIG.ENABLED,
       useSentimentAnalysis: SENTIMENT_CONFIG.ENABLED,
       usePricePrediction: PREDICTION_CONFIG.ENABLED,
+      useAdvancedML: ADVANCED_ML_CONFIG.ENABLED,
+      useEnsemblePrediction: ADVANCED_ML_CONFIG.USE_ENSEMBLE,
+      useMultiSourceSentiment: ADVANCED_ML_CONFIG.USE_MULTI_SOURCE_SENTIMENT,
       ...options,
     };
     
@@ -377,16 +392,29 @@ export class EnhancedMonitor {
     this.currentOrderBook = null;
     this.lastOrderBookUpdate = 0;
     
-    // Sentiment analyzer
-    this.sentimentAnalyzer = new SentimentAnalyzer({
-      buyOnExtremeFear: SENTIMENT_CONFIG.BUY_ON_EXTREME_FEAR,
-      reduceOnExtremeGreed: SENTIMENT_CONFIG.REDUCE_ON_EXTREME_GREED,
-    });
+    // Sentiment analyzer (basic or advanced based on config)
+    if (this.options.useMultiSourceSentiment) {
+      this.sentimentAnalyzer = new AdvancedSentimentAnalyzer({
+        buyOnExtremeFear: SENTIMENT_CONFIG.BUY_ON_EXTREME_FEAR,
+        reduceOnExtremeGreed: SENTIMENT_CONFIG.REDUCE_ON_EXTREME_GREED,
+      });
+    } else {
+      this.sentimentAnalyzer = new SentimentAnalyzer({
+        buyOnExtremeFear: SENTIMENT_CONFIG.BUY_ON_EXTREME_FEAR,
+        reduceOnExtremeGreed: SENTIMENT_CONFIG.REDUCE_ON_EXTREME_GREED,
+      });
+    }
     this.currentSentiment = null;
     this.lastSentimentUpdate = 0;
     
-    // Price predictor
-    this.pricePredictor = new PricePredictor();
+    // Price predictor (basic or advanced ML based on config)
+    if (this.options.useEnsemblePrediction) {
+      this.pricePredictor = new AdvancedMLPredictor({
+        minConsensus: ADVANCED_ML_CONFIG.MIN_CONSENSUS,
+      });
+    } else {
+      this.pricePredictor = new PricePredictor();
+    }
     this.currentPrediction = null;
     this.lastPredictionUpdate = 0;
     
@@ -545,13 +573,21 @@ export class EnhancedMonitor {
     
     // 16. Initialize sentiment analyzer
     if (this.options.useSentimentAnalysis) {
-      console.log('🎭 Sentiment analyzer initialized (Fear & Greed tracking)');
+      if (this.options.useMultiSourceSentiment) {
+        console.log('🎭 Advanced sentiment analyzer initialized (multi-source: F&G, news, market, social)');
+      } else {
+        console.log('🎭 Sentiment analyzer initialized (Fear & Greed tracking)');
+      }
       this.updateSentimentAnalysis();
     }
     
     // 17. Initialize price predictor
     if (this.options.usePricePrediction) {
-      console.log('🔮 Price predictor initialized (ML-based forecasting)');
+      if (this.options.useEnsemblePrediction) {
+        console.log('🔮 Advanced ML predictor initialized (ensemble: EMA/BB/RSI/MACD/Ichimoku/Fibonacci)');
+      } else {
+        console.log('🔮 Price predictor initialized (ML-based forecasting)');  
+      }
       this.updatePricePrediction();
     }
     
@@ -576,8 +612,11 @@ export class EnhancedMonitor {
     console.log(`  ✓ Proactive grid trailing (${this.options.useGridTrailer ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ RSI/MACD momentum filter (${this.options.useMomentumFilter ? 'ENABLED' : 'DISABLED'})`);
     console.log(`  ✓ Order book analysis (${this.options.useOrderBookAnalysis ? 'ENABLED' : 'DISABLED'})`);
-    console.log(`  ✓ Sentiment analysis (${this.options.useSentimentAnalysis ? 'ENABLED' : 'DISABLED'})`);
-    console.log(`  ✓ ML price prediction (${this.options.usePricePrediction ? 'ENABLED' : 'DISABLED'})`);
+    console.log(`  ✓ Sentiment analysis (${this.options.useSentimentAnalysis ? (this.options.useMultiSourceSentiment ? 'ADVANCED (multi-source)' : 'BASIC') : 'DISABLED'})`);
+    console.log(`  ✓ ML price prediction (${this.options.usePricePrediction ? (this.options.useEnsemblePrediction ? 'ADVANCED (ensemble)' : 'BASIC') : 'DISABLED'})`);
+    if (this.options.useAdvancedML) {
+      console.log(`  🧠 Advanced ML: EMA/BB/RSI/MACD/Ichimoku ensemble + multi-source sentiment`);
+    }
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -2021,8 +2060,24 @@ export class EnhancedMonitor {
       
       if (this.currentSentiment && this.currentSentiment.sentiment !== SENTIMENT.NEUTRAL) {
         console.log(`\n🎭 SENTIMENT: ${this.currentSentiment.sentimentName}`);
-        console.log(`   Fear & Greed Index: ${this.currentSentiment.data.fearGreedIndex}`);
-        console.log(`   ${this.currentSentiment.data.recommendation?.message || ''}`);
+        
+        // Show advanced multi-source details if available
+        if (this.options.useMultiSourceSentiment && this.currentSentiment.combinedScore !== undefined) {
+          console.log(`   Combined Score: ${this.currentSentiment.combinedScore}`);
+          console.log(`   Confidence: ${(this.currentSentiment.confidence * 100).toFixed(0)}%`);
+          if (this.currentSentiment.details?.fearGreed) {
+            console.log(`   Fear & Greed: ${this.currentSentiment.details.fearGreed.value} (${this.currentSentiment.details.fearGreed.classification})`);
+          }
+          if (this.currentSentiment.details?.news) {
+            console.log(`   News: ${this.currentSentiment.details.news.positive}+ / ${this.currentSentiment.details.news.negative}-`);
+          }
+          if (this.currentSentiment.details?.market) {
+            console.log(`   Market 24h: ${this.currentSentiment.details.market.change24h}`);
+          }
+        } else {
+          console.log(`   Fear & Greed Index: ${this.currentSentiment.data?.fearGreedIndex || 'N/A'}`);
+        }
+        console.log(`   ${this.currentSentiment.recommendation?.message || this.currentSentiment.data?.recommendation?.message || ''}`);
       }
     } catch (error) {
       console.error(`❌ Sentiment analysis error: ${error.message}`);
@@ -2057,7 +2112,15 @@ export class EnhancedMonitor {
           this.currentPrediction.confidence >= PREDICTION_CONFIG.MIN_CONFIDENCE) {
         console.log(`\n🔮 PREDICTION: ${this.currentPrediction.predictionName}`);
         console.log(`   Confidence: ${(this.currentPrediction.confidence * 100).toFixed(0)}%`);
-        console.log(`   Short-term: ${this.currentPrediction.data.shortTermTrend?.direction || 'N/A'}`);
+        
+        // Show advanced ML details if using ensemble
+        if (this.options.useEnsemblePrediction && this.currentPrediction.data.ensembleScore) {
+          console.log(`   Ensemble Score: ${this.currentPrediction.data.ensembleScore}`);
+          console.log(`   Model Consensus: ${this.currentPrediction.data.consensus}`);
+          console.log(`   Signals: ${this.currentPrediction.data.bullishSignals} bullish, ${this.currentPrediction.data.bearishSignals} bearish`);
+        } else {
+          console.log(`   Short-term: ${this.currentPrediction.data.shortTermTrend?.direction || 'N/A'}`);
+        }
         console.log(`   ${this.currentPrediction.recommendation.message}`);
       }
     } catch (error) {
