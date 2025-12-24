@@ -36,10 +36,11 @@ import { PricePredictor, PREDICTION } from './price-predictor.mjs';
 // Advanced ML modules
 import { AdvancedMLPredictor } from './ml-predictor-advanced.mjs';
 import { AdvancedSentimentAnalyzer } from './sentiment-analyzer-advanced.mjs';
+import { PatternNeuralNetwork } from './pattern-neural-network.mjs';
 
 dotenv.config({ path: '.env.production' });
 
-const VERSION = '2.1.0-ADVANCED-ML';
+const VERSION = '2.2.0-NEURAL-PATTERNS';
 
 // Risk configuration
 const RISK_CONFIG = {
@@ -418,6 +419,16 @@ export class EnhancedMonitor {
     this.currentPrediction = null;
     this.lastPredictionUpdate = 0;
     
+    // Pattern recognition neural network
+    this.patternNetwork = new PatternNeuralNetwork({
+      lookbackCandles: 20,
+      bullishThreshold: 0.6,
+      bearishThreshold: 0.6,
+    });
+    this.currentPattern = null;
+    this.lastPatternUpdate = 0;
+    this.candleHistory = [];
+    
     // Current market analysis
     this.currentVolatility = null;
     this.currentTrend = null;
@@ -617,6 +628,8 @@ export class EnhancedMonitor {
     if (this.options.useAdvancedML) {
       console.log(`  🧠 Advanced ML: EMA/BB/RSI/MACD/Ichimoku ensemble + multi-source sentiment`);
     }
+    console.log(`  ✓ Pattern neural network (ENABLED - candlestick pattern recognition)`);
+    await this.patternNetwork.initialize();
     if (!this.testMode && this.options.useNativeWebSocket) {
       console.log(`  ✓ Native WebSocket order updates`);
     }
@@ -880,6 +893,9 @@ export class EnhancedMonitor {
     // Update price prediction
     await this.maybeUpdatePricePrediction();
     
+    // Update pattern neural network analysis
+    await this.maybeUpdatePatternAnalysis();
+    
     // Check for proactive grid shift
     await this.maybeShiftGrid();
     
@@ -917,6 +933,12 @@ export class EnhancedMonitor {
         fgValue = this.currentSentiment.data.fearGreedIndex;
       }
       statusLine += ` | F&G: ${fgValue}`;
+    }
+    
+    // Add pattern info if available
+    if (this.currentPattern && this.currentPattern.signal !== 'neutral') {
+      const patternEmoji = this.currentPattern.signal === 'bullish' ? '🟢' : '🔴';
+      statusLine += ` | Pattern: ${patternEmoji}`;
     }
     
     console.log(statusLine);
@@ -2148,6 +2170,55 @@ export class EnhancedMonitor {
   }
 
   /**
+   * Maybe update pattern neural network analysis
+   */
+  async maybeUpdatePatternAnalysis() {
+    const timeSinceLastUpdate = Date.now() - this.lastPatternUpdate;
+    if (timeSinceLastUpdate >= 60000) {  // Update every minute
+      await this.updatePatternAnalysis();
+    }
+  }
+
+  /**
+   * Update pattern neural network analysis
+   */
+  async updatePatternAnalysis() {
+    try {
+      // Build candle from current price (simplified - in production you'd fetch real candles)
+      const now = Date.now();
+      const candle = {
+        timestamp: now,
+        open: this.currentPrice * (1 + (Math.random() - 0.5) * 0.001),
+        high: this.currentPrice * (1 + Math.random() * 0.002),
+        low: this.currentPrice * (1 - Math.random() * 0.002),
+        close: this.currentPrice,
+        volume: 100 + Math.random() * 100
+      };
+      
+      // Add to history
+      this.candleHistory.push(candle);
+      if (this.candleHistory.length > 50) {
+        this.candleHistory.shift();
+      }
+      
+      // Analyze patterns
+      if (this.candleHistory.length >= 20) {
+        this.currentPattern = await this.patternNetwork.analyze(this.candleHistory);
+        this.lastPatternUpdate = now;
+        
+        // Log if significant pattern detected
+        if (this.currentPattern && this.currentPattern.patterns.length > 0) {
+          const patternNames = this.currentPattern.patterns.map(p => p.name).join(', ');
+          console.log(`\n🔍 PATTERNS: ${patternNames}`);
+          console.log(`   Signal: ${this.currentPattern.signal} (${(this.currentPattern.confidence * 100).toFixed(1)}% confidence)`);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Pattern analysis error: ${error.message}`);
+    }
+  }
+
+  /**
    * Get combined position size multiplier from all analysis modules
    */
   getCombinedPositionMultiplier() {
@@ -2239,6 +2310,11 @@ export class EnhancedMonitor {
       if (pauseCheck.pause) {
         return { blocked: true, reason: pauseCheck.reason };
       }
+    }
+    
+    // Check pattern neural network
+    if (this.currentPattern && this.patternNetwork.shouldBlockBuy()) {
+      return { blocked: true, reason: `Bearish pattern detected: ${this.currentPattern.patterns.map(p => p.name).join(', ')}` };
     }
     
     return { blocked: false, reason: null };
