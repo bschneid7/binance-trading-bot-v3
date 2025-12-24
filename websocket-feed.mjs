@@ -288,6 +288,21 @@ export class WebSocketPriceFeed {
   }
 
   /**
+   * Destroy instance and release all resources
+   * Call this when completely done with the WebSocket instance
+   */
+  async destroy() {
+    await this.stop();
+    // Clear all references
+    this.onPrice = null;
+    this.onError = null;
+    this.onConnect = null;
+    this.onDisconnect = null;
+    this.exchange = null;
+    console.log('🗑️  WebSocketPriceFeed instance destroyed');
+  }
+
+  /**
    * Sleep utility
    */
   sleep(ms) {

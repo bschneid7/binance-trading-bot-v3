@@ -40,6 +40,7 @@ export class BinanceWebSocket {
     this.tickerWs = null;
     this.keepAliveTimer = null;
     this.pingTimer = null;
+    this.reconnectTimer = null; // Track reconnect timer for cleanup
     this.isConnected = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 10;
@@ -186,6 +187,7 @@ export class BinanceWebSocket {
 
       this.userDataWs.on('error', (error) => {
         console.error('❌ User data WebSocket error:', error.message);
+        this.clearTimers(); // Clear timers on error to prevent memory leaks
         if (this.onError) this.onError(error, 'userData');
       });
 
@@ -361,6 +363,7 @@ export class BinanceWebSocket {
 
     this.tickerWs.on('error', (error) => {
       console.error('❌ Ticker WebSocket error:', error.message);
+      // Note: Ticker stream doesn't have its own timers, only user data stream does
       if (this.onError) this.onError(error, 'ticker');
     });
   }
@@ -397,7 +400,11 @@ export class BinanceWebSocket {
 
     console.log(`🔄 Reconnecting ${streamType} in ${delay / 1000}s (attempt ${this.reconnectAttempts})`);
 
-    setTimeout(() => {
+    // Clear any existing reconnect timer before setting a new one
+    this.clearReconnectTimer();
+    
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (streamType === 'userData') {
         this.reconnectUserDataStream();
       } else if (streamType === 'ticker' && symbols) {
@@ -436,6 +443,7 @@ export class BinanceWebSocket {
    */
   close() {
     this.clearTimers();
+    this.clearReconnectTimer();
     if (this.userDataWs) {
       this.userDataWs.close();
       this.userDataWs = null;
@@ -446,6 +454,33 @@ export class BinanceWebSocket {
     }
     this.isConnected = false;
     console.log('🔌 All WebSocket connections closed');
+  }
+
+  /**
+   * Clear reconnect timer
+   */
+  clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /**
+   * Destroy instance and release all resources
+   * Call this when completely done with the WebSocket instance
+   */
+  destroy() {
+    this.close();
+    // Remove all event listeners
+    this.onFill = null;
+    this.onOrderUpdate = null;
+    this.onAccountUpdate = null;
+    this.onError = null;
+    this.onConnect = null;
+    this.onDisconnect = null;
+    this.onTicker = null;
+    console.log('🗑️  BinanceWebSocket instance destroyed');
   }
 
   /**
