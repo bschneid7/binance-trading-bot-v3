@@ -47,6 +47,53 @@ export class HistoricalDataFetcher {
     
     this.maxRetries = 3;
     this.retryDelay = 1000;
+    this.marketsLoaded = false;
+  }
+
+  /**
+   * Load markets if not already loaded
+   */
+  async loadMarkets() {
+    if (!this.marketsLoaded) {
+      console.log('📊 Loading exchange markets...');
+      await this.exchange.loadMarkets();
+      this.marketsLoaded = true;
+    }
+  }
+
+  /**
+   * Find the correct symbol format for the exchange
+   */
+  findSymbol(inputSymbol) {
+    // Try exact match first
+    if (this.exchange.markets[inputSymbol]) {
+      return inputSymbol;
+    }
+    
+    // Try common variations
+    const variations = [
+      inputSymbol,
+      inputSymbol.replace('/', ''),  // BTCUSD
+      inputSymbol.replace('USD', 'USDT'),  // BTC/USDT
+      inputSymbol.replace('/USD', '/USDT'),  // BTC/USDT
+    ];
+    
+    for (const variation of variations) {
+      if (this.exchange.markets[variation]) {
+        return variation;
+      }
+    }
+    
+    // Search by base/quote
+    const [base, quote] = inputSymbol.split('/');
+    for (const marketId of Object.keys(this.exchange.markets)) {
+      const market = this.exchange.markets[marketId];
+      if (market.base === base && (market.quote === quote || market.quote === 'USDT')) {
+        return marketId;
+      }
+    }
+    
+    return inputSymbol;  // Return original if nothing found
   }
 
   /**
@@ -69,7 +116,15 @@ export class HistoricalDataFetcher {
       return cached;
     }
     
-    console.log(`📡 Fetching ${symbol} ${timeframe} data from ${startDate} to ${endDate}...`);
+    // Load markets to find correct symbol format
+    await this.loadMarkets();
+    const exchangeSymbol = this.findSymbol(symbol);
+    
+    if (exchangeSymbol !== symbol) {
+      console.log(`🔄 Using exchange symbol: ${exchangeSymbol} (requested: ${symbol})`);
+    }
+    
+    console.log(`📡 Fetching ${exchangeSymbol} ${timeframe} data from ${startDate} to ${endDate}...`);
     
     const startTimestamp = new Date(startDate).getTime();
     const endTimestamp = new Date(endDate).getTime();
@@ -80,7 +135,7 @@ export class HistoricalDataFetcher {
     
     while (since < endTimestamp) {
       try {
-        const candles = await this.exchange.fetchOHLCV(symbol, timeframe, since, 1000);
+        const candles = await this.exchange.fetchOHLCV(exchangeSymbol, timeframe, since, 1000);
         
         if (candles.length === 0) break;
         
