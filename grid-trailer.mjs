@@ -43,6 +43,10 @@ const TRAIL_CONFIG = {
   
   // Default range size for emergency recovery (as % of current price)
   EMERGENCY_RANGE_PERCENT: 20,
+  
+  // Minimum escape percentage to trigger emergency (prevents false positives)
+  // Set to 10% to avoid triggering on minor boundary touches
+  MIN_ESCAPE_PERCENT: 10,
 };
 
 /**
@@ -291,12 +295,31 @@ export class GridTrailer {
       return null;
     }
     
+    // Validate inputs
+    if (!currentPrice || !currentLower || !currentUpper) {
+      console.log(`⚠️  Emergency check skipped: Invalid inputs (price=${currentPrice}, lower=${currentLower}, upper=${currentUpper})`);
+      return null;
+    }
+    
+    // Ensure lower < upper (swap if needed due to data issue)
+    if (currentLower > currentUpper) {
+      console.log(`⚠️  Grid bounds swapped! Correcting: lower=${currentLower}, upper=${currentUpper}`);
+      [currentLower, currentUpper] = [currentUpper, currentLower];
+    }
+    
     // Check if price is outside grid
     const isAboveGrid = currentPrice > currentUpper;
     const isBelowGrid = currentPrice < currentLower;
     
     if (!isAboveGrid && !isBelowGrid) {
       return null;  // Price is within grid, no emergency
+    }
+    
+    // Double-check: Log the actual comparison for debugging
+    if (this.config.VERBOSE) {
+      console.log(`🔍 Emergency check: price=$${currentPrice.toFixed(2)}, grid=$${currentLower.toFixed(2)}-$${currentUpper.toFixed(2)}`);
+      console.log(`   isAboveGrid: ${isAboveGrid} (${currentPrice} > ${currentUpper})`);
+      console.log(`   isBelowGrid: ${isBelowGrid} (${currentPrice} < ${currentLower})`);
     }
     
     // Check emergency cooldown
@@ -311,6 +334,13 @@ export class GridTrailer {
     
     // Calculate escape percentage
     const rangeSize = currentUpper - currentLower;
+    
+    // Validate range size
+    if (rangeSize <= 0) {
+      console.log(`⚠️  Emergency check skipped: Invalid range size (${rangeSize})`);
+      return null;
+    }
+    
     let escapePercent;
     let direction;
     
@@ -320,6 +350,21 @@ export class GridTrailer {
     } else {
       escapePercent = ((currentLower - currentPrice) / rangeSize) * 100;
       direction = 'below';
+    }
+    
+    // Validate escape percent (should always be positive)
+    if (escapePercent < 0) {
+      console.log(`⚠️  Emergency check anomaly: Negative escape percent (${escapePercent.toFixed(1)}%)`);
+      console.log(`   This indicates price is actually within grid. Aborting emergency.`);
+      return null;
+    }
+    
+    // Check minimum escape threshold (prevents triggering on minor boundary touches)
+    if (escapePercent < this.config.MIN_ESCAPE_PERCENT) {
+      if (this.config.VERBOSE) {
+        console.log(`⏳ Price escaped by only ${escapePercent.toFixed(1)}% (min: ${this.config.MIN_ESCAPE_PERCENT}%). Waiting for larger move.`);
+      }
+      return null;
     }
     
     // Detect trend for bias
