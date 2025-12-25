@@ -280,14 +280,22 @@ function checkStopLoss(bot, currentPrice, metrics) {
   const entryPrice = (bot.lower_price + bot.upper_price) / 2;
   const loss = (entryPrice - currentPrice) / entryPrice;
   
-  if (loss >= RISK_CONFIG.STOP_LOSS_PERCENT) {
+  // Only trigger stop-loss if price is BELOW entry (actual loss)
+  // Positive loss means price dropped below entry
+  // Negative loss means price is above entry (profit, not a loss)
+  if (loss > 0 && loss >= RISK_CONFIG.STOP_LOSS_PERCENT) {
     return {
       triggered: true,
-      reason: `Stop-loss triggered: ${(loss * 100).toFixed(2)}% loss`,
+      reason: `Stop-loss triggered: ${(loss * 100).toFixed(2)}% loss (price below grid midpoint)`,
     };
   }
   
-  if (metrics.max_drawdown >= RISK_CONFIG.MAX_DRAWDOWN_LIMIT * 100) {
+  // Only check max_drawdown if metrics exist and have meaningful data
+  // Also ensure max_drawdown is a reasonable value (not from stale/incorrect data)
+  if (metrics && 
+      metrics.max_drawdown !== undefined && 
+      metrics.total_trades > 0 &&
+      metrics.max_drawdown >= RISK_CONFIG.MAX_DRAWDOWN_LIMIT * 100) {
     return {
       triggered: true,
       reason: `Max drawdown exceeded: ${metrics.max_drawdown.toFixed(2)}%`,
