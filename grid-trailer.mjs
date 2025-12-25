@@ -45,8 +45,8 @@ const TRAIL_CONFIG = {
   EMERGENCY_RANGE_PERCENT: 20,
   
   // Minimum escape percentage to trigger emergency (prevents false positives)
-  // Set to 10% to avoid triggering on minor boundary touches
-  MIN_ESCAPE_PERCENT: 10,
+  // Set to 20% to avoid triggering on minor boundary touches (increased from 10%)
+  MIN_ESCAPE_PERCENT: 20,
 };
 
 /**
