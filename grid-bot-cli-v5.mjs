@@ -527,6 +527,118 @@ async function stopBot(args) {
   }
 }
 
+async function rebalanceBot(args) {
+  const name = args.name;
+
+  if (!name) {
+    console.error('❌ Error: Bot name required');
+    process.exit(1);
+  }
+
+  const bot = db.getBot(name);
+  if (!bot) {
+    console.error(`❌ Error: Bot "${name}" not found`);
+    process.exit(1);
+  }
+
+  const { exchange, testMode } = initExchange();
+
+  try {
+    console.log(`🔄 Rebalancing bot "${name}"...\n`);
+    
+    // Get current price
+    const ticker = await retryWithBackoff(
+      () => exchange.fetchTicker(bot.symbol),
+      { maxAttempts: 3, context: 'Fetch ticker data' }
+    );
+    const currentPrice = ticker.last;
+    
+    console.log(`📊 Current Price: $${currentPrice.toFixed(2)}`);
+    console.log(`📈 Grid Range: $${bot.lower_price.toFixed(2)} - $${bot.upper_price.toFixed(2)}`);
+    
+    // Check if price is within grid range
+    if (currentPrice < bot.lower_price || currentPrice > bot.upper_price) {
+      console.log(`\n⚠️  WARNING: Current price is OUTSIDE grid range!`);
+      console.log(`   Consider updating the grid range first.`);
+    }
+    
+    // Cancel existing orders on exchange
+    if (!testMode) {
+      console.log(`\n🗑️  Cancelling existing orders on exchange...`);
+      try {
+        const openOrders = await exchange.fetchOpenOrders(bot.symbol);
+        let cancelledCount = 0;
+        for (const order of openOrders) {
+          try {
+            await exchange.cancelOrder(order.id, bot.symbol);
+            cancelledCount++;
+          } catch (e) {
+            console.log(`   ⚠️  Could not cancel order ${order.id}: ${e.message}`);
+          }
+        }
+        console.log(`   ✅ Cancelled ${cancelledCount} orders on exchange`);
+      } catch (e) {
+        console.log(`   ⚠️  Error fetching open orders: ${e.message}`);
+      }
+    }
+    
+    // Cancel orders in database
+    const cancelledDb = db.cancelAllOrders(name, 'rebalance');
+    console.log(`   ✅ Cancelled ${cancelledDb.changes} orders in database`);
+    
+    // Calculate new grid levels
+    const gridLevels = calculateGridLevels(
+      bot.lower_price,
+      bot.upper_price,
+      bot.adjusted_grid_count,
+      currentPrice
+    );
+    
+    console.log(`\n🎯 Placing ${gridLevels.length} new grid orders...`);
+    
+    // Place new orders
+    const orders = await placeGridOrders(bot, gridLevels, exchange, testMode);
+    
+    const buyOrders = orders.filter(o => o.side === 'buy').length;
+    const sellOrders = orders.filter(o => o.side === 'sell').length;
+    
+    console.log(`\n✅ Placed ${buyOrders} BUY orders`);
+    console.log(`✅ Placed ${sellOrders} SELL orders`);
+    console.log(`✅ Total: ${orders.length} orders active`);
+    
+    // Update bot status to running
+    db.updateBotStatus(name, 'running');
+    
+    // Reset trailing stop with new entry price
+    trailingStopManager.setEntryPrice(name, currentPrice);
+    trailingStopManager.configure(name, {
+      strategy: 'percentage',
+      trailingPercent: RISK_CONFIG.TRAILING_STOP_PERCENT,
+      activationPercent: RISK_CONFIG.MIN_PROFIT_FOR_TRAILING,
+    });
+    
+    // Reset max_drawdown in metrics to prevent false triggers
+    try {
+      const existingMetrics = db.getMetrics(name);
+      if (existingMetrics && existingMetrics.max_drawdown > 20) {
+        // Reset high drawdown values that might be stale
+        db.db.prepare('UPDATE metrics SET max_drawdown = 0 WHERE bot_name = ?').run(name);
+        console.log(`\n📊 Reset stale max_drawdown metric`);
+      }
+    } catch (e) {
+      // Ignore metric reset errors
+    }
+    
+    console.log(`\n✅ Bot "${name}" rebalanced successfully!`);
+    console.log(`📝 Mode: ${testMode ? 'PAPER TRADING' : '🔴 LIVE TRADING'}`);
+    console.log(`\nRun 'node grid-bot-cli-v5.mjs monitor --name ${name}' to monitor`);
+
+  } catch (error) {
+    console.error('❌ Error rebalancing bot:', error.message);
+    process.exit(1);
+  }
+}
+
 async function showBot(args) {
   const name = args.name;
 
@@ -952,6 +1064,9 @@ async function main() {
     case 'delete':
       await deleteBot(args);
       break;
+    case 'rebalance':
+      await rebalanceBot(args);
+      break;
     case 'help':
     case '--help':
     case '-h':
@@ -967,6 +1082,7 @@ Commands:
   show      Show detailed bot information
   list      List all bots
   monitor   Monitor bot with WebSocket real-time feed
+  rebalance Cancel all orders and place fresh grid (use after range update)
   delete    Delete a bot
   help      Show this help message
 
