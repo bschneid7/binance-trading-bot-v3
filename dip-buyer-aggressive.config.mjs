@@ -88,7 +88,7 @@ export const AGGRESSIVE_DIP_CONFIG = {
   STOP_LOSS_PCT: -8.0,         // -8% hard stop (wider than default -5%)
   
   // Time-based exit (for stuck positions)
-  MAX_HOLD_HOURS: 168,         // Exit after 7 days if no profit target hit
+  MAX_HOLD_HOURS: null,        // Disabled - patience pays off, no forced time-based exit
   TIME_BASED_EXIT_PCT: 0.5,    // Accept 0.5% profit after max hold time
   
   // ═══════════════════════════════════════════════════════════════════════════
