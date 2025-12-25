@@ -88,47 +88,99 @@ function getBotConfig(db, botName) {
 
 /**
  * Get trade statistics for a bot
+ * Uses price-sorted matching to calculate P&L (same as health-check.mjs)
  */
 function getTradeStats(db, botName) {
-  const now = Date.now();
-  const oneDayAgo = now - (24 * 60 * 60 * 1000);
+  // Get timestamp for 24 hours ago (SQLite format)
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const yesterdayStr = yesterday.toISOString().replace('T', ' ').slice(0, 19);
   
-  // All-time stats
+  // All-time trades
   const allTimeStmt = db.prepare(`
-    SELECT 
-      COUNT(*) as total_trades,
-      SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
-      SUM(pnl) as total_pnl,
-      SUM(fee) as total_fees
+    SELECT side, price, amount, value, fee
     FROM trades 
     WHERE bot_name = ?
+    ORDER BY timestamp ASC
   `);
-  const allTime = allTimeStmt.get(botName) || { total_trades: 0, winning_trades: 0, total_pnl: 0, total_fees: 0 };
+  const allTimeTrades = allTimeStmt.all(botName);
+  const allTimeStats = calculatePnL(allTimeTrades);
   
-  // 24h stats
+  // 24h trades
   const dailyStmt = db.prepare(`
-    SELECT 
-      COUNT(*) as trades_24h,
-      SUM(pnl) as pnl_24h,
-      SUM(fee) as fees_24h
+    SELECT side, price, amount, value, fee
     FROM trades 
-    WHERE bot_name = ? AND timestamp > ?
+    WHERE bot_name = ? AND timestamp >= ?
+    ORDER BY timestamp ASC
   `);
-  const daily = dailyStmt.get(botName, oneDayAgo) || { trades_24h: 0, pnl_24h: 0, fees_24h: 0 };
+  const dailyTrades = dailyStmt.all(botName, yesterdayStr);
+  const dailyStats = calculatePnL(dailyTrades);
   
   return {
     allTime: {
-      totalTrades: allTime.total_trades || 0,
-      winningTrades: allTime.winning_trades || 0,
-      winRate: allTime.total_trades > 0 ? (allTime.winning_trades / allTime.total_trades * 100) : 0,
-      totalPnl: allTime.total_pnl || 0,
-      totalFees: allTime.total_fees || 0,
+      totalTrades: allTimeStats.totalTrades,
+      winningTrades: allTimeStats.wins,
+      winRate: allTimeStats.winRate,
+      totalPnl: allTimeStats.pnl,
+      totalFees: allTimeStats.fees,
     },
     daily: {
-      trades: daily.trades_24h || 0,
-      pnl: daily.pnl_24h || 0,
-      fees: daily.fees_24h || 0,
+      trades: dailyStats.totalTrades,
+      pnl: dailyStats.pnl,
+      fees: dailyStats.fees,
     },
+  };
+}
+
+/**
+ * Calculate P&L from trades using price-sorted matching
+ * (same algorithm as health-check.mjs and weekly-report.mjs)
+ */
+function calculatePnL(trades) {
+  if (!trades || trades.length === 0) {
+    return { totalTrades: 0, pnl: 0, fees: 0, wins: 0, winRate: 0 };
+  }
+  
+  const buys = [];
+  const sells = [];
+  let totalFees = 0;
+  
+  for (const trade of trades) {
+    totalFees += trade.fee || 0;
+    if (trade.side === 'buy') {
+      buys.push({ price: trade.price, amount: trade.amount });
+    } else if (trade.side === 'sell') {
+      sells.push({ price: trade.price, amount: trade.amount });
+    }
+  }
+  
+  // Sort by price ascending
+  buys.sort((a, b) => a.price - b.price);
+  sells.sort((a, b) => a.price - b.price);
+  
+  // Match lowest buys with lowest sells
+  let realizedPnL = 0;
+  let wins = 0;
+  const completedCycles = Math.min(buys.length, sells.length);
+  
+  for (let i = 0; i < completedCycles; i++) {
+    const buy = buys[i];
+    const sell = sells[i];
+    const matchedAmount = Math.min(buy.amount, sell.amount);
+    const profit = (sell.price - buy.price) * matchedAmount;
+    realizedPnL += profit;
+    if (profit > 0) wins++;
+  }
+  
+  realizedPnL -= totalFees;
+  const winRate = completedCycles > 0 ? (wins / completedCycles) * 100 : 0;
+  
+  return {
+    totalTrades: trades.length,
+    pnl: parseFloat(realizedPnL.toFixed(2)),
+    fees: parseFloat(totalFees.toFixed(4)),
+    wins,
+    winRate: parseFloat(winRate.toFixed(1)),
   };
 }
 
