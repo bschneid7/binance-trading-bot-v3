@@ -84,7 +84,7 @@ class WeeklyReportGenerator {
     return { startDate, endDate, startTimestamp, endTimestamp };
   }
   
-  async getTradesForPeriod(botName, startTimestamp, endTimestamp) {
+  async getTradesForPeriod(botName, startDate, endDate) {
     try {
       const trades = this.db.prepare(`
         SELECT * FROM trades 
@@ -92,7 +92,7 @@ class WeeklyReportGenerator {
         AND timestamp >= ? 
         AND timestamp <= ?
         ORDER BY timestamp ASC
-      `).all(botName, startTimestamp, endTimestamp);
+      `).all(botName, startDate, endDate + ' 23:59:59');
       return trades;
     } catch (error) {
       console.error(`Error fetching trades for ${botName}:`, error.message);
@@ -118,7 +118,7 @@ class WeeklyReportGenerator {
   async getBotStats(botName) {
     try {
       const stats = this.db.prepare(`
-        SELECT * FROM bot_stats WHERE bot_name = ?
+        SELECT * FROM metrics WHERE bot_name = ?
       `).get(botName);
       return stats || {};
     } catch (error) {
@@ -223,7 +223,7 @@ class WeeklyReportGenerator {
     const botName = REPORT_CONFIG.BOT_NAMES[symbol];
     
     // Get trades and orders
-    const trades = await this.getTradesForPeriod(botName, weekRange.startTimestamp, weekRange.endTimestamp);
+    const trades = await this.getTradesForPeriod(botName, weekRange.startDate, weekRange.endDate);
     const orders = await this.getOrdersForPeriod(botName, weekRange.startTimestamp, weekRange.endTimestamp);
     const botStats = await this.getBotStats(botName);
     
@@ -382,10 +382,15 @@ class WeeklyReportGenerator {
     
     for (const [symbol, data] of Object.entries(report.symbols)) {
       console.log(`\\n${symbol}:`);
-      console.log(`  Trades: ${data.tradeMetrics.totalTrades} (${data.tradeMetrics.buyTrades} buys, ${data.tradeMetrics.sellTrades} sells)`);
-      console.log(`  Volume: $${data.tradeMetrics.totalVolume.toFixed(2)}`);
-      console.log(`  Realized P&L: $${data.tradeMetrics.realizedProfit.toFixed(2)}`);
-      console.log(`  Win Rate: ${data.tradeMetrics.winRate.toFixed(1)}%`);
+      console.log(`  This Week: ${data.tradeMetrics.totalTrades} trades (${data.tradeMetrics.buyTrades} buys, ${data.tradeMetrics.sellTrades} sells)`);
+      console.log(`  Weekly Volume: $${data.tradeMetrics.totalVolume.toFixed(2)}`);
+      console.log(`  Weekly Realized P&L: $${data.tradeMetrics.realizedProfit.toFixed(2)}`);
+      if (data.botStats && data.botStats.total_pnl !== undefined) {
+        console.log(`  All-Time Stats (from metrics):`);
+        console.log(`    - Total Trades: ${data.botStats.total_trades || 0}`);
+        console.log(`    - Total P&L: $${(data.botStats.total_pnl || 0).toFixed(2)}`);
+        console.log(`    - Win Rate: ${(data.botStats.win_rate || 0).toFixed(1)}%`);
+      }
       console.log(`  Sentiment Impact:`);
       console.log(`    - Trades in Extreme Fear: ${data.sentimentImpact.tradesInExtremeFear}`);
       console.log(`    - Trades in Extreme Greed: ${data.sentimentImpact.tradesInExtremeGreed}`);
