@@ -177,45 +177,70 @@ class WeeklyReportGenerator {
         avgTradeSize: 0,
         winRate: 0,
         totalFees: 0,
+        completedCycles: 0,
       };
     }
     
-    const buyTrades = trades.filter(t => t.side === 'buy');
-    const sellTrades = trades.filter(t => t.side === 'sell');
+    // Separate buys and sells
+    const buys = [];
+    const sells = [];
+    let totalVolume = 0;
+    let totalFees = 0;
     
-    const totalVolume = trades.reduce((sum, t) => sum + (t.price * t.amount), 0);
-    const totalFees = trades.reduce((sum, t) => sum + (t.fee || 0), 0);
+    for (const trade of trades) {
+      const fee = trade.fee || 0;
+      totalFees += fee;
+      totalVolume += trade.value || (trade.price * trade.amount);
+      
+      if (trade.side === 'buy') {
+        buys.push({ price: trade.price, value: trade.value, amount: trade.amount });
+      } else if (trade.side === 'sell') {
+        sells.push({ price: trade.price, value: trade.value, amount: trade.amount });
+      }
+    }
     
-    // Calculate realized profit (simplified - pairs buys with sells)
+    // For grid bots, realized P&L comes from completed cycles
+    // A cycle = buy at lower price, sell at higher price
+    // Match lowest buys with lowest sells (grid trading pattern)
+    
     let realizedProfit = 0;
-    const buyQueue = [...buyTrades];
-    for (const sell of sellTrades) {
-      if (buyQueue.length > 0) {
-        const buy = buyQueue.shift();
-        realizedProfit += (sell.price - buy.price) * Math.min(buy.amount, sell.amount);
+    let wins = 0;
+    const completedCycles = Math.min(buys.length, sells.length);
+    
+    if (completedCycles > 0) {
+      // Sort buys by price ascending (lowest first)
+      // Sort sells by price ascending (lowest first)
+      buys.sort((a, b) => a.price - b.price);
+      sells.sort((a, b) => a.price - b.price);
+      
+      // Match lowest buys with lowest sells
+      // In grid trading, sells should be at higher prices than buys
+      for (let i = 0; i < completedCycles; i++) {
+        const buy = buys[i];
+        const sell = sells[i];
+        // Use the smaller amount if they differ
+        const matchedAmount = Math.min(buy.amount, sell.amount);
+        const profit = (sell.price - buy.price) * matchedAmount;
+        realizedProfit += profit;
+        if (profit > 0) wins++;
       }
     }
     
-    // Win rate
-    let wins = 0;
-    const buyQueueForWinRate = [...buyTrades];
-    for (const sell of sellTrades) {
-      if (buyQueueForWinRate.length > 0) {
-        const buy = buyQueueForWinRate.shift();
-        if (sell.price > buy.price) wins++;
-      }
-    }
-    const winRate = sellTrades.length > 0 ? (wins / sellTrades.length) * 100 : 0;
+    // Subtract fees from realized P&L
+    realizedProfit -= totalFees;
+    
+    const winRate = completedCycles > 0 ? (wins / completedCycles) * 100 : 0;
     
     return {
       totalTrades: trades.length,
-      buyTrades: buyTrades.length,
-      sellTrades: sellTrades.length,
+      buyTrades: buys.length,
+      sellTrades: sells.length,
       totalVolume,
-      realizedProfit,
+      realizedProfit: parseFloat(realizedProfit.toFixed(2)),
       avgTradeSize: totalVolume / trades.length,
-      winRate,
-      totalFees,
+      winRate: parseFloat(winRate.toFixed(1)),
+      totalFees: parseFloat(totalFees.toFixed(4)),
+      completedCycles,
     };
   }
   
@@ -382,7 +407,7 @@ class WeeklyReportGenerator {
     
     for (const [symbol, data] of Object.entries(report.symbols)) {
       console.log(`\\n${symbol}:`);
-      console.log(`  This Week: ${data.tradeMetrics.totalTrades} trades (${data.tradeMetrics.buyTrades} buys, ${data.tradeMetrics.sellTrades} sells)`);
+      console.log(`  This Week: ${data.tradeMetrics.totalTrades} trades (${data.tradeMetrics.buyTrades} buys, ${data.tradeMetrics.sellTrades} sells, ${data.tradeMetrics.completedCycles || 0} cycles)`);
       console.log(`  Weekly Volume: $${data.tradeMetrics.totalVolume.toFixed(2)}`);
       console.log(`  Weekly Realized P&L: $${data.tradeMetrics.realizedProfit.toFixed(2)}`);
       if (data.botStats && data.botStats.total_pnl !== undefined) {
