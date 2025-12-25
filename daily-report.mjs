@@ -119,6 +119,9 @@ function getTradeStats(db, botName) {
   return {
     allTime: {
       totalTrades: allTimeStats.totalTrades,
+      buys: allTimeStats.buys,
+      sells: allTimeStats.sells,
+      cycles: allTimeStats.cycles,
       winningTrades: allTimeStats.wins,
       winRate: allTimeStats.winRate,
       totalPnl: allTimeStats.pnl,
@@ -126,6 +129,9 @@ function getTradeStats(db, botName) {
     },
     daily: {
       trades: dailyStats.totalTrades,
+      buys: dailyStats.buys,
+      sells: dailyStats.sells,
+      cycles: dailyStats.cycles,
       pnl: dailyStats.pnl,
       fees: dailyStats.fees,
     },
@@ -138,7 +144,7 @@ function getTradeStats(db, botName) {
  */
 function calculatePnL(trades) {
   if (!trades || trades.length === 0) {
-    return { totalTrades: 0, pnl: 0, fees: 0, wins: 0, winRate: 0 };
+    return { totalTrades: 0, buys: 0, sells: 0, cycles: 0, pnl: 0, fees: 0, wins: 0, winRate: 0 };
   }
   
   const buys = [];
@@ -177,6 +183,9 @@ function calculatePnL(trades) {
   
   return {
     totalTrades: trades.length,
+    buys: buys.length,
+    sells: sells.length,
+    cycles: completedCycles,
     pnl: parseFloat(realizedPnL.toFixed(2)),
     fees: parseFloat(totalFees.toFixed(4)),
     wins,
@@ -298,12 +307,14 @@ function formatReport(data) {
       `   Open Orders: ${bot.orders.total} (${bot.orders.buy} buy / ${bot.orders.sell} sell)`,
       '',
       `   24h Stats:`,
-      `      Trades: ${bot.stats.daily.trades}`,
+      `      Trades: ${bot.stats.daily.trades} (${bot.stats.daily.buys} buys / ${bot.stats.daily.sells} sells)`,
+      `      Cycles: ${bot.stats.daily.cycles} completed`,
       `      P&L: $${(bot.stats.daily.pnl || 0).toFixed(2)}`,
       `      Fees: $${(bot.stats.daily.fees || 0).toFixed(2)}`,
       '',
       `   All-Time Stats:`,
-      `      Trades: ${bot.stats.allTime.totalTrades}`,
+      `      Trades: ${bot.stats.allTime.totalTrades} (${bot.stats.allTime.buys} buys / ${bot.stats.allTime.sells} sells)`,
+      `      Cycles: ${bot.stats.allTime.cycles} completed`,
       `      P&L: $${(bot.stats.allTime.totalPnl || 0).toFixed(2)}`,
       `      Win Rate: ${bot.stats.allTime.winRate.toFixed(1)}%`,
       ''
