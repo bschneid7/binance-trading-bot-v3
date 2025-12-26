@@ -310,6 +310,7 @@ function checkDatabase(db, botName) {
 
 /**
  * Calculate P&L from the last 24 hours
+ * Includes both strict 24h P&L and estimated P&L (matching 24h sells with historical buys)
  */
 function calculate24hPnL(db, botName) {
   try {
@@ -331,7 +332,7 @@ function calculate24hPnL(db, botName) {
     const trades = stmt.all(botName, yesterdayStr);
     
     if (trades.length === 0) {
-      return { pnl: 0, trades: 0, buys: 0, sells: 0 };
+      return { pnl: 0, estimatedPnl: 0, trades: 0, buys: 0, sells: 0, completedCycles: 0 };
     }
     
     // Calculate P&L from trades
@@ -365,10 +366,7 @@ function calculate24hPnL(db, botName) {
     // A cycle = buy at lower price, sell at higher price
     // Profit per cycle ≈ grid_spacing_percent * trade_value
     
-    // Calculate realized P&L:
-    // Method: For each sell, assume it closes a previous buy at a lower price
-    // Grid profit = sum of (sell_price - buy_price) * amount for matched pairs
-    
+    // Calculate strict 24h realized P&L (only trades within 24h window)
     let realizedPnL = 0;
     const completedCycles = Math.min(buyCount, sellCount);
     
@@ -394,8 +392,51 @@ function calculate24hPnL(db, botName) {
     // Subtract fees from realized P&L
     realizedPnL -= totalFees;
     
+    // Calculate ESTIMATED P&L: Match 24h sells with ALL historical buys
+    // This shows profit from sells even if the buy was before 24h window
+    let estimatedPnL = 0;
+    
+    if (sellCount > 0) {
+      // Get ALL historical buys for this bot (not just 24h)
+      const allBuysStmt = db.db.prepare(`
+        SELECT price, amount
+        FROM trades
+        WHERE bot_name = ? AND side = 'buy'
+        ORDER BY price ASC
+      `);
+      const allBuys = allBuysStmt.all(botName);
+      
+      // Sort 24h sells by price ascending
+      sells.sort((a, b) => a.price - b.price);
+      
+      // Match each 24h sell with the lowest available historical buy
+      // Create a copy of allBuys to track used amounts
+      const availableBuys = allBuys.map(b => ({ ...b, remainingAmount: b.amount }));
+      
+      for (const sell of sells) {
+        let sellAmountRemaining = sell.amount;
+        
+        for (const buy of availableBuys) {
+          if (sellAmountRemaining <= 0) break;
+          if (buy.remainingAmount <= 0) continue;
+          
+          // Match as much as possible
+          const matchedAmount = Math.min(sellAmountRemaining, buy.remainingAmount);
+          const profit = (sell.price - buy.price) * matchedAmount;
+          estimatedPnL += profit;
+          
+          buy.remainingAmount -= matchedAmount;
+          sellAmountRemaining -= matchedAmount;
+        }
+      }
+      
+      // Subtract fees
+      estimatedPnL -= totalFees;
+    }
+    
     return {
       pnl: parseFloat(realizedPnL.toFixed(2)),
+      estimatedPnl: parseFloat(estimatedPnL.toFixed(2)),
       trades: trades.length,
       buys: buyCount,
       sells: sellCount,
@@ -405,7 +446,7 @@ function calculate24hPnL(db, botName) {
       totalFees: parseFloat(totalFees.toFixed(4))
     };
   } catch (e) {
-    return { pnl: 0, trades: 0, error: e.message };
+    return { pnl: 0, estimatedPnl: 0, trades: 0, error: e.message };
   }
 }
 
@@ -541,7 +582,14 @@ async function checkBotHealth(botName, exchange, db) {
       const pnl24h = dbStatus.pnl24h;
       const pnlColor = pnl24h.pnl >= 0 ? '\x1b[32m' : '\x1b[31m'; // Green for positive, red for negative
       const pnlSign = pnl24h.pnl >= 0 ? '+' : '';
-      console.log(`   24h P&L: ${pnlColor}${pnlSign}$${pnl24h.pnl.toFixed(2)}\x1b[0m (${pnl24h.trades} trades, ${pnl24h.completedCycles || 0} cycles)`);
+      console.log(`   24h P&L: ${pnlColor}${pnlSign}$${pnl24h.pnl.toFixed(2)}\x1b[0m (${pnl24h.trades} trades: ${pnl24h.buys || 0} buys, ${pnl24h.sells || 0} sells, ${pnl24h.completedCycles || 0} cycles)`);
+      
+      // Show estimated P&L if there were sells (matches 24h sells with historical buys)
+      if (pnl24h.sells > 0 && pnl24h.estimatedPnl !== undefined) {
+        const estColor = pnl24h.estimatedPnl >= 0 ? '\x1b[32m' : '\x1b[31m';
+        const estSign = pnl24h.estimatedPnl >= 0 ? '+' : '';
+        console.log(`   24h Est. P&L: ${estColor}${estSign}$${pnl24h.estimatedPnl.toFixed(2)}\x1b[0m (sells matched with historical buys)`);
+      }
     }
   } else {
     console.log(error(`Database error: ${dbStatus.error}`));
