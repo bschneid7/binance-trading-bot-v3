@@ -1122,6 +1122,15 @@ async function runHealthCheck() {
         console.log(`   │    SOL: ${solColor}${solSign}$${unrealizedPnL.sol.unrealized.toFixed(2)}${colors.reset}`.padEnd(60) + '│');
       }
       
+      // Calculate and show discrepancy (other holdings, fees, USD changes)
+      const trackedPnL = total24hPnL + unrealizedPnL.total;
+      const discrepancy = equityChange - trackedPnL;
+      if (Math.abs(discrepancy) > 0.50) {
+        const discColor = discrepancy >= 0 ? colors.green : colors.red;
+        const discSign = discrepancy >= 0 ? '+' : '';
+        console.log(`   │    Other: ${discColor}${discSign}$${discrepancy.toFixed(2)}${colors.reset} (ZEC, fees, USD)`.padEnd(60) + '│');
+      }
+      
       console.log(`   ├─────────────────────────────────────────────────────┤`);
       
       // Net equity change
