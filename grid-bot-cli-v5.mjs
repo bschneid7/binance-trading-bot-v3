@@ -766,6 +766,13 @@ async function monitorBot(args) {
   console.log(`📊 Symbol: ${bot.symbol}`);
   console.log(`🔌 Connection: WebSocket (real-time)`);
   console.log(`📝 Mode: ${testMode ? 'PAPER TRADING' : '🔴 LIVE TRADING'}`);
+  
+  // Update bot status to running when monitor starts
+  // This ensures status is correct even after systemd restarts the service
+  if (bot.status !== 'running') {
+    db.updateBotStatus(botName, 'running');
+    console.log(`✅ Bot status updated to 'running'`);
+  }
   console.log();
 
   let totalFills = 0;
