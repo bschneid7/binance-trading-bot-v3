@@ -629,13 +629,35 @@ async function checkBotHealth(botName, exchange, db) {
   } else if (logStatus.error) {
     console.log(error(`Error reading log: ${logStatus.error}`));
   } else {
+    // Format the last activity timestamp for display
+    const formatActivityTime = (timestamp) => {
+      if (!timestamp) return null;
+      try {
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) return timestamp; // Return as-is if can't parse
+        return date.toLocaleString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          hour: 'numeric', 
+          minute: '2-digit', 
+          second: '2-digit',
+          hour12: true 
+        });
+      } catch (e) {
+        return timestamp;
+      }
+    };
+    
+    const formattedTime = formatActivityTime(logStatus.lastTimestamp);
+    const timeDisplay = formattedTime ? ` (${formattedTime})` : '';
+    
     if (logStatus.isStale && processStatus.running) {
-      console.log(warning(`Log is stale (${logStatus.ageSeconds.toFixed(0)}s since last update)`));
+      console.log(warning(`Log is stale (${logStatus.ageSeconds.toFixed(0)}s since last update)${timeDisplay}`));
       results.issues.push('Stale log activity');
     } else if (processStatus.running) {
-      console.log(success(`Recent activity detected`));
+      console.log(success(`Recent activity detected${timeDisplay}`));
     } else {
-      console.log(info(`Last activity: ${logStatus.ageSeconds.toFixed(0)}s ago`));
+      console.log(info(`Last activity: ${logStatus.ageSeconds.toFixed(0)}s ago${timeDisplay}`));
     }
     
     if (logStatus.lastPrice) {
