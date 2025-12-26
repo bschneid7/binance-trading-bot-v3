@@ -773,6 +773,19 @@ async function monitorBot(args) {
     db.updateBotStatus(botName, 'running');
     console.log(`✅ Bot status updated to 'running'`);
   }
+  
+  // Reset max_drawdown metric on monitor start to prevent false triggers from historical data
+  // The max_drawdown metric is calculated from historical trades and can accumulate to high values
+  // that don't reflect current session risk. We reset it to start fresh each session.
+  try {
+    const existingMetrics = db.getMetrics(botName);
+    if (existingMetrics && existingMetrics.max_drawdown > RISK_CONFIG.MAX_DRAWDOWN_LIMIT * 100) {
+      db.db.prepare('UPDATE metrics SET max_drawdown = 0 WHERE bot_name = ?').run(botName);
+      console.log(`📊 Reset stale max_drawdown metric (was ${existingMetrics.max_drawdown.toFixed(2)}%)`);
+    }
+  } catch (e) {
+    // Ignore metric reset errors
+  }
   console.log();
 
   let totalFills = 0;
