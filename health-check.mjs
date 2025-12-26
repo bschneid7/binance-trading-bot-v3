@@ -630,25 +630,42 @@ async function checkBotHealth(botName, exchange, db) {
     console.log(error(`Error reading log: ${logStatus.error}`));
   } else {
     // Format the last activity timestamp for display
-    const formatActivityTime = (timestamp) => {
+    // Log format is [HH:MM:SS] so we combine with file modification date
+    const formatActivityTime = (timestamp, fileAgeSeconds) => {
       if (!timestamp) return null;
       try {
+        // If timestamp is just time (HH:MM:SS), combine with today's date
+        if (/^\d{2}:\d{2}:\d{2}$/.test(timestamp)) {
+          // Use file modification time to get the correct date
+          const fileModTime = new Date(Date.now() - (fileAgeSeconds * 1000));
+          return fileModTime.toLocaleString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            hour: 'numeric', 
+            minute: '2-digit', 
+            second: '2-digit',
+            hour12: true,
+            timeZoneName: 'short'
+          });
+        }
+        // Try parsing as full date
         const date = new Date(timestamp);
-        if (isNaN(date.getTime())) return timestamp; // Return as-is if can't parse
+        if (isNaN(date.getTime())) return timestamp;
         return date.toLocaleString('en-US', { 
           month: 'short', 
           day: 'numeric', 
           hour: 'numeric', 
           minute: '2-digit', 
           second: '2-digit',
-          hour12: true 
+          hour12: true,
+          timeZoneName: 'short'
         });
       } catch (e) {
         return timestamp;
       }
     };
     
-    const formattedTime = formatActivityTime(logStatus.lastTimestamp);
+    const formattedTime = formatActivityTime(logStatus.lastTimestamp, logStatus.ageSeconds);
     const timeDisplay = formattedTime ? ` (${formattedTime})` : '';
     
     if (logStatus.isStale && processStatus.running) {
