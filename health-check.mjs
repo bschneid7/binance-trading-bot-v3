@@ -602,8 +602,13 @@ async function checkBotHealth(botName, exchange, db) {
   const processStatus = checkProcess(botName);
   
   if (processStatus.running) {
-    const monitorType = processStatus.type === 'enhanced' ? 'Enhanced Monitor' : 'Legacy Monitor';
-    console.log(success(`Monitor process running (${monitorType})`));
+    const isEnhanced = processStatus.type === 'enhanced';
+    const monitorType = isEnhanced ? '🚀 Enhanced Monitor' : '📦 Simple Monitor';
+    console.log(success(`Monitor process running`));
+    console.log(`   Type: ${monitorType}`);
+    if (isEnhanced) {
+      console.log(`   Features: Auto-Rebalance, Volatility Grid, Trend Filter, Dynamic Sizing`);
+    }
     console.log(`   PID: ${processStatus.pid}`);
     console.log(`   CPU: ${processStatus.cpu}%`);
     console.log(`   Memory: ${processStatus.mem}%`);
