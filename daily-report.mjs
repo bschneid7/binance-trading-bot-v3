@@ -87,6 +87,20 @@ function getBotConfig(db, botName) {
 }
 
 /**
+ * Get the last trade timestamp for a bot
+ */
+function getLastTradeTime(db, botName) {
+  const stmt = db.prepare(`
+    SELECT timestamp FROM trades 
+    WHERE bot_name = ? 
+    ORDER BY timestamp DESC 
+    LIMIT 1
+  `);
+  const result = stmt.get(botName);
+  return result ? result.timestamp : null;
+}
+
+/**
  * Get trade statistics for a bot
  * Uses price-sorted matching to calculate P&L (same as health-check.mjs)
  */
@@ -95,6 +109,9 @@ function getTradeStats(db, botName) {
   const now = new Date();
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const yesterdayStr = yesterday.toISOString().replace('T', ' ').slice(0, 19);
+  
+  // Get last trade time
+  const lastTradeTime = getLastTradeTime(db, botName);
   
   // All-time trades
   const allTimeStmt = db.prepare(`
@@ -117,6 +134,7 @@ function getTradeStats(db, botName) {
   const dailyStats = calculatePnL(dailyTrades);
   
   return {
+    lastTradeTime,
     allTime: {
       totalTrades: allTimeStats.totalTrades,
       buys: allTimeStats.buys,
@@ -303,8 +321,29 @@ function formatReport(data) {
       );
     }
     
+    // Calculate hours since last trade
+    let lastTradeAlert = '';
+    let lastTradeDisplay = 'Never';
+    if (bot.stats.lastTradeTime) {
+      const lastTradeDate = new Date(bot.stats.lastTradeTime.replace(' ', 'T') + 'Z');
+      const hoursSinceLastTrade = (Date.now() - lastTradeDate.getTime()) / (1000 * 60 * 60);
+      lastTradeDisplay = lastTradeDate.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'America/Los_Angeles'
+      }) + ' PST';
+      
+      if (hoursSinceLastTrade >= 24) {
+        lastTradeAlert = ` ⚠️ NO TRADES IN ${Math.floor(hoursSinceLastTrade)}h`;
+      }
+    }
+    
     lines.push(
       `   Open Orders: ${bot.orders.total} (${bot.orders.buy} buy / ${bot.orders.sell} sell)`,
+      `   Last Trade: ${lastTradeDisplay}${lastTradeAlert}`,
       '',
       `   24h Stats:`,
       `      Trades: ${bot.stats.daily.trades} (${bot.stats.daily.buys} buys / ${bot.stats.daily.sells} sells)`,
