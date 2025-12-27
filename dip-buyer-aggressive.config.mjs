@@ -20,35 +20,35 @@ export const AGGRESSIVE_DIP_CONFIG = {
   // Tier 1: Minor dip (standard accumulation)
   DIP_TIER_1: {
     THRESHOLD: -3.0,           // 3% drop triggers Tier 1
-    ORDER_SIZE_USD: 100,       // $100 per buy
+    ORDER_SIZE_USD: 50,        // $50 per buy (reduced for capital efficiency)
     LOOKBACK_MINUTES: 60,      // 1 hour lookback
   },
   
   // Tier 2: Moderate dip (increased accumulation)
   DIP_TIER_2: {
     THRESHOLD: -5.0,           // 5% drop triggers Tier 2
-    ORDER_SIZE_USD: 200,       // $200 per buy (2x normal)
+    ORDER_SIZE_USD: 100,       // $100 per buy (2x normal)
     LOOKBACK_MINUTES: 120,     // 2 hour lookback
   },
   
   // Tier 3: Flash crash (aggressive accumulation)
   DIP_TIER_3: {
     THRESHOLD: -8.0,           // 8% drop triggers Tier 3
-    ORDER_SIZE_USD: 400,       // $400 per buy (4x normal)
+    ORDER_SIZE_USD: 200,       // $200 per buy (4x normal)
     LOOKBACK_MINUTES: 240,     // 4 hour lookback
   },
   
   // Tier 4: Major crash (maximum accumulation)
   DIP_TIER_4: {
     THRESHOLD: -12.0,          // 12% drop triggers Tier 4
-    ORDER_SIZE_USD: 600,       // $600 per buy (6x normal)
+    ORDER_SIZE_USD: 300,       // $300 per buy (6x normal)
     LOOKBACK_MINUTES: 480,     // 8 hour lookback
   },
   
   // Legacy single-tier config (for backwards compatibility)
   DIP_THRESHOLD: -3.0,
   LOOKBACK_MINUTES: 60,
-  ORDER_SIZE_USD: 100,
+  ORDER_SIZE_USD: 50,
   
   // ═══════════════════════════════════════════════════════════════════════════
   // POSITION MANAGEMENT - AGGRESSIVE SETTINGS
@@ -108,13 +108,13 @@ export const AGGRESSIVE_DIP_CONFIG = {
   // ═══════════════════════════════════════════════════════════════════════════
   // RESERVE PROTECTION
   // ═══════════════════════════════════════════════════════════════════════════
-  MIN_USD_RESERVE: 1800,       // Keep $1,800 for grid operations (up from $1,200)
+  MIN_USD_RESERVE: 1500,       // Keep $1,500 for grid operations (reduced for dip buying flexibility)
   
   // Dynamic reserve based on market conditions
   DYNAMIC_RESERVE: {
     ENABLED: true,
-    HIGH_VOLATILITY_RESERVE: 2500,  // Keep more reserve during high volatility
-    LOW_VOLATILITY_RESERVE: 1500,   // Use more capital during calm markets
+    HIGH_VOLATILITY_RESERVE: 2000,  // Keep more reserve during high volatility
+    LOW_VOLATILITY_RESERVE: 1200,   // Use more capital during calm markets
     VOLATILITY_THRESHOLD: 5.0,      // 5% daily move = high volatility
   },
   
