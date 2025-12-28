@@ -108,13 +108,13 @@ export const AGGRESSIVE_DIP_CONFIG = {
   // ═══════════════════════════════════════════════════════════════════════════
   // RESERVE PROTECTION
   // ═══════════════════════════════════════════════════════════════════════════
-  MIN_USD_RESERVE: 1500,       // Keep $1,500 for grid operations (reduced for dip buying flexibility)
+  MIN_USD_RESERVE: 1000,       // Keep $1,000 for grid operations (reduced to free capital for grid expansion)
   
   // Dynamic reserve based on market conditions
   DYNAMIC_RESERVE: {
     ENABLED: true,
-    HIGH_VOLATILITY_RESERVE: 2000,  // Keep more reserve during high volatility
-    LOW_VOLATILITY_RESERVE: 1200,   // Use more capital during calm markets
+    HIGH_VOLATILITY_RESERVE: 1500,  // Keep more reserve during high volatility
+    LOW_VOLATILITY_RESERVE: 800,    // Use more capital during calm markets
     VOLATILITY_THRESHOLD: 5.0,      // 5% daily move = high volatility
   },
   
