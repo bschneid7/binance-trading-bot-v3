@@ -13,6 +13,7 @@ import { DatabaseManager } from './database.mjs';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import nodemailer from 'nodemailer';
 
 const REPORT_CONFIG = {
   SYMBOLS: ['BTC', 'ETH', 'SOL'],
@@ -23,6 +24,7 @@ const REPORT_CONFIG = {
   },
   REPORT_DIR: '/home/ubuntu/binance-trading-bot-v3/reports/weekly',
   SENTIMENT_HISTORY_FILE: '/home/ubuntu/binance-trading-bot-v3/data/sentiment-correlation-history.json',
+  EMAIL_TO: 'bschneid7@gmail.com',
 };
 
 class WeeklyReportGenerator {
@@ -736,14 +738,117 @@ class WeeklyReportGenerator {
       }
     }
   }
+  
+  /**
+   * Send weekly report via email
+   */
+  async sendEmail(markdownReport, summary) {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+    
+    const weekEnding = new Date().toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    // Create a plain text summary for email
+    const emailBody = `
+======================================================================
+  WEEKLY PERFORMANCE REPORT
+  Week Ending: ${weekEnding}
+======================================================================
+
+📊 SUMMARY
+-----------
+Portfolio Value: $${summary.portfolioValue.toFixed(2)}
+Weekly Realized P&L: $${summary.totalRealizedProfit.toFixed(2)}
+Total Trades: ${summary.totalTrades}
+Total Volume: $${summary.totalVolume.toFixed(2)}
+Avg Win Rate: ${summary.avgWinRate.toFixed(1)}%
+
+📉 SENTIMENT
+------------
+Avg Fear & Greed: ${summary.avgFearGreed.toFixed(1)}
+Extreme Fear Days: ${summary.extremeFearDays}
+Extreme Greed Days: ${summary.extremeGreedDays}
+
+📈 BY SYMBOL
+------------
+${Object.entries(summary.symbols).map(([symbol, data]) => `
+${symbol}:
+  Trades: ${data.trades} (${data.buys} buys, ${data.sells} sells)
+  Weekly P&L: $${data.pnl.toFixed(2)}
+  Fear Trades: ${data.fearTrades}
+`).join('')}
+
+----------------------------------------------------------------------
+Full report saved to: ${summary.reportPath}
+----------------------------------------------------------------------
+`;
+    
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: REPORT_CONFIG.EMAIL_TO,
+      subject: `📊 Weekly Bot Report - Week Ending ${weekEnding}`,
+      text: emailBody,
+    };
+    
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log('\n✅ Email sent successfully to', REPORT_CONFIG.EMAIL_TO);
+      return true;
+    } catch (error) {
+      console.error('\n❌ Failed to send email:', error.message);
+      return false;
+    }
+  }
 }
 
 // Main execution
 async function main() {
+  const args = process.argv.slice(2);
+  const skipEmail = args.includes('--no-email');
+  
   const generator = new WeeklyReportGenerator();
   await generator.init();
   const result = await generator.generateReport();
-  console.log('\\n✅ Weekly report generation complete!');
+  
+  // Send email if not skipped
+  if (!skipEmail) {
+    const summary = {
+      portfolioValue: result.fullReport.portfolio.currentValue,
+      totalRealizedProfit: result.fullReport.summary.totalRealizedProfit,
+      totalTrades: result.fullReport.summary.totalTrades,
+      totalVolume: result.fullReport.summary.totalVolume,
+      avgWinRate: result.fullReport.summary.avgWinRate,
+      avgFearGreed: result.fullReport.sentiment.avgFearGreed,
+      extremeFearDays: result.fullReport.sentiment.extremeFearDays,
+      extremeGreedDays: result.fullReport.sentiment.extremeGreedDays,
+      symbols: {},
+      reportPath: result.reportPath,
+    };
+    
+    for (const [symbol, data] of Object.entries(result.fullReport.symbols)) {
+      summary.symbols[symbol] = {
+        trades: data.tradeMetrics.totalTrades,
+        buys: data.tradeMetrics.buyTrades,
+        sells: data.tradeMetrics.sellTrades,
+        pnl: data.tradeMetrics.realizedProfit,
+        fearTrades: data.sentimentImpact.tradesInExtremeFear,
+      };
+    }
+    
+    await generator.sendEmail(result.mdPath, summary);
+  }
+  
+  console.log('\n✅ Weekly report generation complete!');
   return result;
 }
 

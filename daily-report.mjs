@@ -79,6 +79,17 @@ function checkDipBuyerStatus() {
 }
 
 /**
+ * Generate a visual progress bar
+ */
+function generateProgressBar(percentage, width = 20) {
+  const filled = Math.round((percentage / 100) * width);
+  const empty = width - filled;
+  const filledBar = '█'.repeat(filled);
+  const emptyBar = '░'.repeat(empty);
+  return '[' + filledBar + emptyBar + ']';
+}
+
+/**
  * Get bot configuration from database
  */
 function getBotConfig(db, botName) {
@@ -284,6 +295,14 @@ function formatReport(data) {
   ];
   
   // Summary section
+  // Profit milestones
+  const MILESTONES = [1000, 1500, 2000, 2500, 3000, 3500, 4000, 5000, 7500, 10000];
+  const currentPnL = totals.allTime.pnl;
+  const reachedMilestones = MILESTONES.filter(m => currentPnL >= m);
+  const nextMilestone = MILESTONES.find(m => currentPnL < m);
+  const latestMilestone = reachedMilestones.length > 0 ? reachedMilestones[reachedMilestones.length - 1] : null;
+  const progressToNext = nextMilestone ? ((currentPnL / nextMilestone) * 100).toFixed(1) : 100;
+  
   lines.push(
     '┌─────────────────────────────────────────────────────────────────────┐',
     '│                         SUMMARY                                     │',
@@ -295,6 +314,28 @@ function formatReport(data) {
     `   📊 All-Time Trades:   ${totals.allTime.trades}`,
     ''
   );
+  
+  // Add milestone progress
+  if (nextMilestone) {
+    const progressBar = generateProgressBar(parseFloat(progressToNext));
+    lines.push(
+      '   🎯 PROFIT MILESTONES:',
+      `   ${progressBar} ${progressToNext}% to $${nextMilestone.toLocaleString()}`,
+    );
+    if (latestMilestone) {
+      lines.push(`   ✅ Latest milestone reached: $${latestMilestone.toLocaleString()}`);
+    }
+    // Alert if close to next milestone (within 10%)
+    if (parseFloat(progressToNext) >= 90) {
+      lines.push(`   🔔 ALERT: Only $${(nextMilestone - currentPnL).toFixed(2)} away from $${nextMilestone.toLocaleString()} milestone!`);
+    }
+    lines.push('');
+  } else {
+    lines.push(
+      '   🏆 ALL MILESTONES REACHED! ($10,000+)',
+      ''
+    );
+  }
   
   // Individual bot sections
   for (const bot of bots) {
