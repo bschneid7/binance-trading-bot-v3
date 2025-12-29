@@ -42,14 +42,14 @@ const RISK_CONFIG = {
   STOP_LOSS_PERCENT: 0.15,
   TRAILING_STOP_PERCENT: 0.05,
   MAX_RISK_PER_TRADE: 0.02,
-  REBALANCE_THRESHOLD: 0.10,  // Rebalance when price is 10% outside grid
+  REBALANCE_THRESHOLD: 0.07,  // Rebalance when price is 7% outside grid
   MIN_PROFIT_FOR_TRAILING: 0.03,
 };
 
 // Grid rebalancing configuration
 const REBALANCE_CONFIG = {
   // How far outside the grid (as % of grid range) before triggering rebalance
-  TRIGGER_THRESHOLD: 0.10,
+  TRIGGER_THRESHOLD: 0.07,
   // Minimum time between rebalances (ms)
   MIN_REBALANCE_INTERVAL: 5 * 60 * 1000,  // 5 minutes
   // How much to shift the grid (as % of grid range)
