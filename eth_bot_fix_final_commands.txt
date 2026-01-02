@@ -1,0 +1,361 @@
+# ETH BOT FIX & RECAPITALIZATION - FINAL COMMAND LIST
+# Date: January 2, 2026
+# Capital: $2,000 from $6,055 USD available
+# Target: Purchase 0.59 ETH (~$1,800) + $200 USD reserve
+
+# ═══════════════════════════════════════════════════════════
+# EXECUTION INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════
+#
+# 🟢 GREEN BLOCKS = Copy entire block, paste, run together
+# 🟡 YELLOW BLOCKS = Run ONE LINE at a time, review output
+# 🔴 RED BLOCKS = MANUAL STEPS (cannot be automated)
+#
+# ═══════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════
+# PHASE 1: BACKUP & DOCUMENTATION (5 minutes)
+# ═══════════════════════════════════════════════════════════
+
+# 🟢 COPY ENTIRE BLOCK - Safe to run together
+cd /root/binance-trading-bot-v3
+cp data/grid-bot.db data/grid-bot.db.backup.$(date +%Y%m%d_%H%M%S)
+ls -lh data/grid-bot.db*
+node health-check.mjs > ~/eth-bot-before-fix-$(date +%Y%m%d_%H%M%S).txt
+echo "✅ Backup complete"
+
+# 🟡 RUN LINE BY LINE - Review output after each
+node health-check.mjs | grep -A 30 "live-eth-bot"
+# ↑ Review this output to confirm current state:
+#   - Should show: Status 🟢 Running
+#   - Active Orders in DB: 0 (this is the problem)
+#   - Binance.US Orders: 25 (24 buy / 1 sell)
+
+
+# ═══════════════════════════════════════════════════════════
+# PHASE 2: FIX DATABASE SYNC (10 minutes)
+# ═══════════════════════════════════════════════════════════
+
+# 🟡 RUN LINE BY LINE - Review output after each
+node grid-bot-cli.mjs stop --name live-eth-bot
+# ↑ Wait for: "🛑 Bot stopped successfully"
+
+sleep 3
+
+node grid-bot-cli.mjs status --name live-eth-bot
+# ↑ Should show: Status: Stopped or Not Running
+
+
+# 🔴 MANUAL STEP REQUIRED - Cannot be automated
+# ═══════════════════════════════════════════════════════════
+# Cancel all ETH orders on Binance.US:
+#
+# METHOD 1: Via Binance.US Website (Recommended)
+#   1. Open browser: https://www.binance.us
+#   2. Log in
+#   3. Click "Orders" → "Open Orders"
+#   4. Filter by "ETH/USD"
+#   5. Click "Cancel All" or cancel each order individually
+#   6. Verify 0 orders remain
+#
+# METHOD 2: Via CLI (if cancel-all-orders.mjs exists)
+#   node cancel-all-orders.mjs --symbol ETH/USD --confirm
+#
+# ⚠️ DO NOT PROCEED until all 25 orders are cancelled!
+# ═══════════════════════════════════════════════════════════
+
+
+# 🟢 COPY ENTIRE BLOCK - Clean database (safe to run together)
+sqlite3 data/grid-bot.db << 'EOF'
+DELETE FROM orders WHERE bot_name = 'live-eth-bot';
+UPDATE bots SET status = 'stopped', updated_at = datetime('now') WHERE name = 'live-eth-bot';
+.quit
+EOF
+
+# 🟡 RUN LINE BY LINE - Verify cleanup
+sqlite3 data/grid-bot.db "SELECT name, status, (SELECT COUNT(*) FROM orders WHERE bot_name = 'live-eth-bot') as order_count FROM bots WHERE name = 'live-eth-bot';"
+# ↑ MUST show: live-eth-bot|stopped|0
+# ↑ If not, something went wrong - STOP and troubleshoot
+
+
+# ═══════════════════════════════════════════════════════════
+# PHASE 3: ADD CAPITAL (10-15 minutes)
+# ═══════════════════════════════════════════════════════════
+
+# 🟡 RUN LINE BY LINE - Check current balances
+node health-check.mjs | grep -A 10 "Monitored Holdings"
+# ↑ Note current balances:
+#   USD: ~$6,055
+#   ETH: ~0.031906 ETH (~$97)
+
+
+# 🔴 MANUAL STEP REQUIRED - Purchase ETH
+# ═══════════════════════════════════════════════════════════
+# Purchase 0.59 ETH on Binance.US:
+#
+# Via Binance.US Website (Recommended):
+#   1. Open browser: https://www.binance.us/trade/ETH_USD
+#   2. Log in
+#   3. On the right side, select "Market" tab
+#   4. In "Buy ETH" section:
+#      - Amount: Enter "0.59" ETH
+#      - Or Total: Enter "$1800" USD
+#   5. Review order:
+#      - Type: Market
+#      - Amount: ~0.59 ETH
+#      - Estimated cost: ~$1,800
+#   6. Click "Buy ETH"
+#   7. Confirm the purchase
+#   8. Wait for order to fill (usually instant for market orders)
+#
+# Via API (Advanced - if you have trading script):
+#   node place-order.mjs --symbol ETH/USD --side buy --type market --amount 0.59
+#
+# Expected result:
+#   - Filled: 0.59 ETH
+#   - Cost: ~$1,795-$1,805 (depending on exact price)
+#   - Fee: ~$1.80 (0.1%)
+#   - Net ETH received: ~0.588 ETH
+#
+# ⚠️ DO NOT PROCEED until purchase is complete and filled!
+# ═══════════════════════════════════════════════════════════
+
+
+# 🟡 RUN LINE BY LINE - Verify purchase
+node health-check.mjs | grep -A 10 "Monitored Holdings"
+# ↑ MUST show:
+#   USD: ~$4,260 (decreased by ~$1,795)
+#   ETH: ~0.621 ETH (increased from 0.032 to 0.621)
+# ↑ If ETH balance is NOT ~0.62 ETH, STOP and verify purchase
+
+
+# ═══════════════════════════════════════════════════════════
+# PHASE 4: RESTART BOT (10 minutes)
+# ═══════════════════════════════════════════════════════════
+
+# 🟡 RUN LINE BY LINE - Check configuration
+sqlite3 data/grid-bot.db "SELECT name, symbol, lower_price, upper_price, grid_count FROM bots WHERE name = 'live-eth-bot';"
+# ↑ Should show: live-eth-bot|ETH/USD|2250.0|3380.0|32
+
+
+# 🟡 RUN LINE BY LINE - Start bot and monitor
+node grid-bot-cli.mjs start --name live-eth-bot
+# ↑ Watch for output like:
+#   🚀 Starting bot "live-eth-bot"...
+#   📊 Current Price: $3,043.XX
+#   🎯 Placing 32 grid orders...
+#   ✅ Placed X BUY orders
+#   ✅ Placed Y SELL orders
+#   ✅ Total: Z orders active
+#
+# ⚠️ If you see "insufficient balance" error, see TROUBLESHOOTING below
+
+sleep 60
+# ↑ Wait 60 seconds for bot to initialize and place orders
+
+node grid-bot-cli.mjs status --name live-eth-bot
+# ↑ Should show:
+#   Mode: 🔴 LIVE TRADING
+#   Status: 🟢 Running
+#   Orders: 28-32 active
+
+
+# ═══════════════════════════════════════════════════════════
+# PHASE 5: VERIFICATION (5 minutes)
+# ═══════════════════════════════════════════════════════════
+
+# 🟡 RUN LINE BY LINE - Verify each aspect
+
+# Check full health status
+node health-check.mjs | grep -A 40 "live-eth-bot"
+# ↑ VERIFY:
+#   ✅ Status: 🟢 Running (not stopped)
+#   ✅ Active Orders in DB: 28-32 (NOT 0)
+#   ✅ Binance.US Orders: 28-32 (NOT 25)
+#   ✅ Buy Orders: 14-16 (NOT 24)
+#   ✅ Sell Orders: 14-16 (NOT 1)
+#   ✅ Monitor process: Running
+
+# Verify database orders
+sqlite3 data/grid-bot.db "SELECT side, COUNT(*) FROM orders WHERE bot_name = 'live-eth-bot' AND status = 'OPEN' GROUP BY side;"
+# ↑ MUST show something like:
+#   BUY|16
+#   SELL|16
+# ↑ Numbers should be balanced, NOT 24/1
+
+# Check recent logs for errors
+tail -20 logs/live-eth-bot.log
+# ↑ Look for:
+#   ✅ "Placed X orders successfully"
+#   ✅ "Price update" messages
+#   ❌ NO "error" or "failed" messages
+
+# Verify capital deployment
+node health-check.mjs | grep -A 15 "Capital Deployment"
+# ↑ Should show:
+#   ETH in sell orders: ~$945 (increased from $95)
+#   Capital Utilization: 92-95% (increased from 87.7%)
+
+# Save final state
+node health-check.mjs > ~/eth-bot-after-fix-$(date +%Y%m%d_%H%M%S).txt
+echo "✅ Verification complete"
+
+
+# ═══════════════════════════════════════════════════════════
+# FINAL SUCCESS CHECK
+# ═══════════════════════════════════════════════════════════
+
+# 🟢 COPY ENTIRE BLOCK - Run full health check
+echo "═══════════════════════════════════════════════════════════"
+echo "FINAL SUCCESS CHECK"
+echo "═══════════════════════════════════════════════════════════"
+node health-check.mjs
+echo ""
+echo "═══════════════════════════════════════════════════════════"
+echo "VERIFY ALL OF THE FOLLOWING:"
+echo "═══════════════════════════════════════════════════════════"
+echo "[ ] ETH Bot status: 🟢 Running"
+echo "[ ] Database orders: 28-32 (not 0)"
+echo "[ ] Exchange orders: 28-32 (not 25)"
+echo "[ ] Order balance: ~16 buy / ~16 sell (not 24/1)"
+echo "[ ] ETH balance: ~0.621 ETH (~$1,890)"
+echo "[ ] USD balance: ~$4,260 (decreased by ~$1,795)"
+echo "[ ] No errors in logs"
+echo "[ ] Monitor process running"
+echo "═══════════════════════════════════════════════════════════"
+
+
+# ═══════════════════════════════════════════════════════════
+# TROUBLESHOOTING
+# ═══════════════════════════════════════════════════════════
+
+# ❌ PROBLEM: "Insufficient balance" error when starting bot
+# ═══════════════════════════════════════════════════════════
+# SOLUTION 1: Reduce grid count to 24 orders
+sqlite3 data/grid-bot.db "UPDATE bots SET grid_count = 24, adjusted_grid_count = 24 WHERE name = 'live-eth-bot';"
+node grid-bot-cli.mjs stop --name live-eth-bot
+node grid-bot-cli.mjs start --name live-eth-bot
+
+# SOLUTION 2: Check if ETH purchase actually completed
+node health-check.mjs | grep -A 10 "Monitored Holdings"
+# ↑ If ETH is still ~0.032 (not ~0.62), purchase didn't complete
+# ↑ Go back to Phase 3 and complete the purchase
+
+
+# ❌ PROBLEM: Database still shows 0 orders after restart
+# ═══════════════════════════════════════════════════════════
+# SOLUTION: Force restart
+node grid-bot-cli.mjs stop --name live-eth-bot
+sleep 5
+node grid-bot-cli.mjs start --name live-eth-bot
+sleep 60
+sqlite3 data/grid-bot.db "SELECT COUNT(*) FROM orders WHERE bot_name = 'live-eth-bot' AND status = 'OPEN';"
+
+
+# ❌ PROBLEM: Monitor process not running
+# ═══════════════════════════════════════════════════════════
+# SOLUTION: Restart monitor service
+systemctl status grid-bot-eth
+systemctl restart grid-bot-eth
+systemctl status grid-bot-eth
+
+
+# ❌ PROBLEM: Orders placed but immediately cancelled
+# ═══════════════════════════════════════════════════════════
+# SOLUTION: Check if price is within grid range
+node health-check.mjs | grep -A 5 "Grid Range"
+# If current price is outside $2,250-$3,380, update grid range:
+sqlite3 data/grid-bot.db "UPDATE bots SET lower_price = 2000, upper_price = 3500 WHERE name = 'live-eth-bot';"
+node grid-bot-cli.mjs stop --name live-eth-bot
+node grid-bot-cli.mjs start --name live-eth-bot
+
+
+# ❌ EMERGENCY: Need to rollback everything
+# ═══════════════════════════════════════════════════════════
+# SOLUTION: Restore from backup
+node grid-bot-cli.mjs stop --name live-eth-bot
+cp data/grid-bot.db.backup.YYYYMMDD_HHMMSS data/grid-bot.db
+# (Replace YYYYMMDD_HHMMSS with actual backup filename from Phase 1)
+node grid-bot-cli.mjs start --name live-eth-bot
+# Note: You'll still have the ETH you purchased, just bot will be in old state
+
+
+# ═══════════════════════════════════════════════════════════
+# DAILY MONITORING (Next 7 days)
+# ═══════════════════════════════════════════════════════════
+
+# 🟢 COPY ENTIRE BLOCK - Daily check (run once per day)
+echo "═══════════════════════════════════════════════════════════"
+echo "DAILY ETH BOT CHECK - $(date)"
+echo "═══════════════════════════════════════════════════════════"
+cd /root/binance-trading-bot-v3
+node health-check.mjs | grep -A 30 "live-eth-bot"
+echo ""
+echo "Trades in last 24 hours:"
+sqlite3 data/grid-bot.db "SELECT COUNT(*) FROM trades WHERE bot_name = 'live-eth-bot' AND timestamp > datetime('now', '-1 day');"
+echo "═══════════════════════════════════════════════════════════"
+
+
+# ═══════════════════════════════════════════════════════════
+# COMPLETION SUMMARY
+# ═══════════════════════════════════════════════════════════
+
+# 🟢 COPY ENTIRE BLOCK - View completion summary
+echo ""
+echo "═══════════════════════════════════════════════════════════"
+echo "ETH BOT FIX COMPLETE! 🎉"
+echo "═══════════════════════════════════════════════════════════"
+echo ""
+echo "Capital deployed: $2,000"
+echo "ETH purchased: ~0.59 ETH (~$1,800)"
+echo "USD remaining: ~$4,260"
+echo ""
+echo "Before:"
+echo "  - ETH: 0.032 ETH ($97)"
+echo "  - Orders: 25 (24 buy / 1 sell) - Unbalanced"
+echo "  - Database: 0 orders (out of sync)"
+echo ""
+echo "After:"
+echo "  - ETH: 0.621 ETH ($1,890)"
+echo "  - Orders: 28-32 (16 buy / 16 sell) - Balanced ✅"
+echo "  - Database: 28-32 orders (in sync) ✅"
+echo ""
+echo "Backup files:"
+ls -lh data/grid-bot.db.backup.* 2>/dev/null | tail -1
+ls -lh ~/eth-bot-*.txt 2>/dev/null
+echo ""
+echo "Next steps:"
+echo "  1. Monitor daily for 7 days"
+echo "  2. Watch for first trade (expected 3-7 days)"
+echo "  3. Verify database stays in sync"
+echo "  4. Compare performance to BTC/SOL bots"
+echo ""
+echo "═══════════════════════════════════════════════════════════"
+
+
+# ═══════════════════════════════════════════════════════════
+# QUICK REFERENCE
+# ═══════════════════════════════════════════════════════════
+
+# Check ETH bot status anytime:
+node health-check.mjs | grep -A 30 "live-eth-bot"
+
+# Check recent logs:
+tail -50 logs/live-eth-bot.log
+
+# Check database orders:
+sqlite3 data/grid-bot.db "SELECT side, COUNT(*) FROM orders WHERE bot_name = 'live-eth-bot' AND status = 'OPEN' GROUP BY side;"
+
+# Restart ETH bot:
+node grid-bot-cli.mjs stop --name live-eth-bot
+sleep 5
+node grid-bot-cli.mjs start --name live-eth-bot
+
+# Full health check:
+node health-check.mjs
+
+
+# ═══════════════════════════════════════════════════════════
+# END OF COMMANDS
+# ═══════════════════════════════════════════════════════════

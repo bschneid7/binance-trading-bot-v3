@@ -1,0 +1,189 @@
+═══════════════════════════════════════════════════════════════
+ETH BOT FIX - EXECUTION CHECKLIST
+═══════════════════════════════════════════════════════════════
+
+Date: ____________    Start Time: ____________
+
+CAPITAL: $2,000 from $6,055 USD available
+TARGET: Purchase 0.59 ETH (~$1,800)
+TIME: 30-45 minutes
+
+═══════════════════════════════════════════════════════════════
+PRE-FLIGHT CHECK
+═══════════════════════════════════════════════════════════════
+
+[ ] VPS SSH access ready
+[ ] Binance.US login ready
+[ ] 45 minutes of uninterrupted time
+[ ] Command file open and ready
+[ ] This checklist printed/visible
+
+═══════════════════════════════════════════════════════════════
+PHASE 1: BACKUP (2 minutes)
+═══════════════════════════════════════════════════════════════
+
+[ ] SSH to VPS
+[ ] Navigate to: /root/binance-trading-bot-v3
+[ ] Run backup commands
+[ ] Verify backup file created
+[ ] Save health check output
+
+Time completed: ____________
+
+═══════════════════════════════════════════════════════════════
+PHASE 2: STOP & CLEAN (5 minutes)
+═══════════════════════════════════════════════════════════════
+
+[ ] Stop ETH bot
+[ ] Verify bot stopped
+[ ] Open Binance.US in browser
+[ ] Navigate to Open Orders
+[ ] Filter by ETH/USD
+[ ] Cancel all 25 orders
+[ ] Verify 0 orders remain
+[ ] Run database cleanup commands
+[ ] Verify cleanup: live-eth-bot|stopped|0
+
+Time completed: ____________
+
+═══════════════════════════════════════════════════════════════
+PHASE 3: BUY ETH (10 minutes)
+═══════════════════════════════════════════════════════════════
+
+[ ] Go to: binance.us/trade/ETH_USD
+[ ] Select "Market" order type
+[ ] Enter: 0.59 ETH (or $1,800 USD)
+[ ] Review order details
+[ ] Click "Buy ETH"
+[ ] Confirm purchase
+[ ] Wait for order to fill
+[ ] Verify purchase in SSH: ~0.621 ETH total
+
+Amount purchased: _______ ETH
+Cost: $__________
+Time completed: ____________
+
+═══════════════════════════════════════════════════════════════
+PHASE 4: RESTART BOT (5 minutes)
+═══════════════════════════════════════════════════════════════
+
+[ ] Run: node grid-bot-cli.mjs start --name live-eth-bot
+[ ] Watch for "Starting bot" message
+[ ] Wait 60 seconds
+[ ] Run: node grid-bot-cli.mjs status --name live-eth-bot
+[ ] Verify: Status Running, Orders active
+
+Orders placed: _______ (should be 28-32)
+Time completed: ____________
+
+═══════════════════════════════════════════════════════════════
+PHASE 5: VERIFY SUCCESS (5 minutes)
+═══════════════════════════════════════════════════════════════
+
+[ ] Run full health check
+[ ] Status: 🟢 Running (not stopped)
+[ ] Active Orders in DB: 28-32 (NOT 0)
+[ ] Binance.US Orders: 28-32 (NOT 25)
+[ ] Buy Orders: 14-16 (NOT 24)
+[ ] Sell Orders: 14-16 (NOT 1)
+[ ] ETH balance: ~0.621 ETH (~$1,890)
+[ ] USD balance: ~$4,260 (decreased)
+[ ] No errors in logs
+[ ] Monitor process running
+
+Time completed: ____________
+
+═══════════════════════════════════════════════════════════════
+SUCCESS VERIFICATION
+═══════════════════════════════════════════════════════════════
+
+Database orders: _______ (should be 28-32)
+Exchange orders: _______ (should be 28-32)
+Buy orders: _______ (should be 14-16)
+Sell orders: _______ (should be 14-16)
+ETH balance: _______ ETH (should be ~0.621)
+USD balance: $_______ (should be ~$4,260)
+
+[ ] All numbers match expected ranges
+[ ] No error messages in logs
+[ ] Bot status shows "Running"
+[ ] Database and exchange in sync
+
+═══════════════════════════════════════════════════════════════
+POST-EXECUTION
+═══════════════════════════════════════════════════════════════
+
+[ ] Save final health check output
+[ ] Note backup file location: _________________________
+[ ] Set calendar reminder for daily checks (7 days)
+[ ] Set calendar reminder for Jan 14 verification
+[ ] Celebrate! 🎉
+
+Total time taken: ____________
+
+═══════════════════════════════════════════════════════════════
+DAILY MONITORING (Next 7 days)
+═══════════════════════════════════════════════════════════════
+
+Day 1 (___/___): [ ] Health check done - Orders: ___ Trades: ___
+Day 2 (___/___): [ ] Health check done - Orders: ___ Trades: ___
+Day 3 (___/___): [ ] Health check done - Orders: ___ Trades: ___
+Day 4 (___/___): [ ] Health check done - Orders: ___ Trades: ___
+Day 5 (___/___): [ ] Health check done - Orders: ___ Trades: ___
+Day 6 (___/___): [ ] Health check done - Orders: ___ Trades: ___
+Day 7 (___/___): [ ] Health check done - Orders: ___ Trades: ___
+
+First trade date: ___/___/___ at ___:___ (expected within 3-7 days)
+
+═══════════════════════════════════════════════════════════════
+TROUBLESHOOTING (if needed)
+═══════════════════════════════════════════════════════════════
+
+Issue encountered: ________________________________________
+
+Solution applied: _________________________________________
+
+Result: [ ] Fixed  [ ] Still troubleshooting
+
+═══════════════════════════════════════════════════════════════
+NOTES
+═══════════════════════════════════════════════════════════════
+
+_____________________________________________________________
+
+_____________________________________________________________
+
+_____________________________________________________________
+
+_____________________________________________________________
+
+═══════════════════════════════════════════════════════════════
+COMPLETION STATUS
+═══════════════════════════════════════════════════════════════
+
+[ ] ETH bot fix COMPLETE
+[ ] All verification checks passed
+[ ] Daily monitoring scheduled
+[ ] System fully operational
+
+Completed by: ________________  Date: ___/___/2026
+
+═══════════════════════════════════════════════════════════════
+
+QUICK REFERENCE COMMANDS:
+
+Health check:
+  node health-check.mjs | grep -A 30 "live-eth-bot"
+
+Check logs:
+  tail -50 logs/live-eth-bot.log
+
+Restart bot:
+  node grid-bot-cli.mjs stop --name live-eth-bot
+  sleep 5
+  node grid-bot-cli.mjs start --name live-eth-bot
+
+Restore backup:
+  cp data/grid-bot.db.backup.YYYYMMDD_HHMMSS data/grid-bot.db
+
+═══════════════════════════════════════════════════════════════
