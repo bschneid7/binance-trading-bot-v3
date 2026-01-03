@@ -427,6 +427,15 @@ export class EnhancedMonitor {
   async start() {
     console.log('🚀 Starting enhanced monitor...\n');
     
+    // 0. Update database status to 'running'
+    try {
+      const updateStmt = this.db.prepare(`UPDATE grid_bots SET status = 'running', updated_at = datetime('now') WHERE name = ?`);
+      updateStmt.run(this.botName);
+      console.log(`✅ Database status updated to 'running' for ${this.botName}`);
+    } catch (err) {
+      console.error(`⚠️ Failed to update database status: ${err.message}`);
+    }
+    
     // 1. Initial order sync
     console.log('📋 Performing initial order sync...');
     await this.syncOrders();
@@ -2033,6 +2042,15 @@ export class EnhancedMonitor {
    * Stop all monitoring systems
    */
   async stop() {
+    // Update database status to 'stopped'
+    try {
+      const updateStmt = this.db.prepare(`UPDATE grid_bots SET status = 'stopped', updated_at = datetime('now') WHERE name = ?`);
+      updateStmt.run(this.botName);
+      console.log(`✅ Database status updated to 'stopped' for ${this.botName}`);
+    } catch (err) {
+      console.error(`⚠️ Failed to update database status: ${err.message}`);
+    }
+    
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
       this.syncTimer = null;
