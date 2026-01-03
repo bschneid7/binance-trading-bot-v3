@@ -429,8 +429,7 @@ export class EnhancedMonitor {
     
     // 0. Update database status to 'running'
     try {
-      const updateStmt = this.db.prepare(`UPDATE grid_bots SET status = 'running', updated_at = datetime('now') WHERE name = ?`);
-      updateStmt.run(this.botName);
+      this.db.updateBotStatus(this.botName, 'running');
       console.log(`✅ Database status updated to 'running' for ${this.botName}`);
     } catch (err) {
       console.error(`⚠️ Failed to update database status: ${err.message}`);
@@ -2044,8 +2043,7 @@ export class EnhancedMonitor {
   async stop() {
     // Update database status to 'stopped'
     try {
-      const updateStmt = this.db.prepare(`UPDATE grid_bots SET status = 'stopped', updated_at = datetime('now') WHERE name = ?`);
-      updateStmt.run(this.botName);
+      this.db.updateBotStatus(this.botName, 'stopped');
       console.log(`✅ Database status updated to 'stopped' for ${this.botName}`);
     } catch (err) {
       console.error(`⚠️ Failed to update database status: ${err.message}`);
