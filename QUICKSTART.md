@@ -35,15 +35,15 @@ Grid bots place a series of buy and sell orders within a predefined price range,
 
 | Bot Name | Symbol | Grid Range | Grid Levels |
 |---|---|---|---|
-| `live-btc-bot` | BTC/USD | $65,000 - $130,000 | 30 |
-| `live-eth-bot` | ETH/USD | $2,250 - $3,380 | 26 |
+| `live-btc-bot` | BTC/USD | $80,000 - $105,000 | 30 |
+| `live-eth-bot` | ETH/USD | $2,800 - $3,600 | 26 |
 | `live-sol-bot` | SOL/USD | $95 - $150 | 12 |
 
 ### 3.2. Enhanced Monitor
 
 All grid bots are managed by the **Enhanced Monitor**, which provides advanced features beyond simple grid trading:
 
-- **Auto-Rebalance:** Automatically shifts the grid range if the price moves 10% outside the configured boundaries.
+- **Auto-Rebalance:** Automatically shifts the grid range if the price moves 7% outside the configured boundaries.
 - **Volatility-Based Grid Adjustments:** Dynamically adjusts grid spacing based on market volatility.
 - **Trend Filtering:** Reduces trades against strong market trends to minimize losses.
 - **Dynamic Position Sizing:** Adjusts order sizes based on market conditions.
@@ -76,7 +76,8 @@ All commands should be run from the `/root/binance-trading-bot-v3` directory on 
 | Command | Description |
 |---|---|
 | `node grid-bot-cli-v5.mjs show --name <bot_name>` | Display the configuration and status of a specific grid bot.
-| `node grid-bot-cli-v5.mjs rebalance --name <bot_name>` | **Use with caution.** Cancels all orders and places a fresh grid. Useful after updating grid range.
+| `node update-grid-range.mjs --name <bot_name> --lower <price> --upper <price>` | Update the grid range for a bot in the database.
+| `node grid-bot-cli-v5.mjs rebalance --name <bot_name>` | **Use with caution.** Cancels all orders and places a fresh grid. Run after `update-grid-range.mjs`.
 
 ### 4.3. Service Management Commands
 
