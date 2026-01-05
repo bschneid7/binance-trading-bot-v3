@@ -90,7 +90,7 @@ async function main() {
   console.log('✅ Exchange initialized');
   
   // Get open orders from database
-  const openOrders = db.getOpenOrders(botName);
+  const openOrders = db.getActiveOrders(botName);
   console.log(`📋 Found ${openOrders.length} open orders in database\n`);
   
   if (openOrders.length === 0) {
