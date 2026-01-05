@@ -15,8 +15,31 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.production' });
 
+import ccxt from 'ccxt';
 import { getDatabase } from './database.mjs';
-import { getExchange } from './exchange.mjs';
+
+// Initialize exchange
+function initExchange() {
+  const apiKey = process.env.BINANCE_API_KEY;
+  const secret = process.env.BINANCE_API_SECRET;
+  
+  if (!apiKey || !secret) {
+    console.error('Error: BINANCE_API_KEY and BINANCE_API_SECRET must be set');
+    process.exit(1);
+  }
+  
+  const exchange = new ccxt.binanceus({
+    apiKey,
+    secret,
+    enableRateLimit: true,
+    options: {
+      defaultType: 'spot',
+      adjustForTimeDifference: true,
+    },
+  });
+  
+  return exchange;
+}
 
 const db = getDatabase();
 
@@ -63,7 +86,8 @@ async function main() {
   
   // Initialize exchange
   console.log('🔧 Initializing exchange...');
-  const exchange = await getExchange();
+  const exchange = initExchange();
+  console.log('✅ Exchange initialized');
   
   // Get open orders from database
   const openOrders = db.getOpenOrders(botName);
